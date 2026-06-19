@@ -1,0 +1,75 @@
+"""FastAPI 应用入口。
+
+启动：  uvicorn app.main:app --reload --port 8000
+文档：  http://localhost:8000/docs
+"""
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request, Depends
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.core.config import settings
+from app.core.database import init_db
+from app.core.response import ok, err
+from app.deps import get_current_user
+from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log
+from app.core.oplog import operation_log_middleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 建表（开发期 create_all；生产用 Alembic）
+    init_db()
+    if settings.AUTO_SEED:
+        from scripts.seed import seed_if_empty, ensure_users
+        seed_if_empty()
+        ensure_users()  # 幂等：保证默认账号存在
+    # 启动模拟训练调度器（P4）
+    from app.services.trainer import start_scheduler
+    start_scheduler()
+    yield
+
+
+app = FastAPI(title="模型微调通用平台 API", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 操作日志中间件：自动记录所有写操作（在 CORS 之后注册，确保最先进入、最后离开）
+app.middleware("http")(operation_log_middleware)
+
+# 鉴权路由：公开（登录无需 token）
+app.include_router(auth.router, prefix="/api")
+
+# 业务路由统一挂在 /api 下，并要求登录（注入 get_current_user 依赖）
+app.include_router(dataset.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(task.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(evaluation.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(model.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(config.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(get_current_user)])
+app.include_router(log.router, prefix="/api", dependencies=[Depends(get_current_user)])
+
+
+@app.get("/api/health")
+def health():
+    return ok({"status": "up"})
+
+
+# 统一异常 -> {code,data,message}，返回 HTTP 200 以便前端拦截器按 code 处理
+@app.exception_handler(StarletteHTTPException)
+async def http_exc_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(status_code=200, content=err(str(exc.detail), code=exc.status_code))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exc_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=200, content=err("参数校验失败", code=4220))

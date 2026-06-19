@@ -33,7 +33,7 @@
             <el-dropdown-item disabled>{{ userStore.userInfo.dept }}</el-dropdown-item>
             <el-dropdown-item divided>个人中心</el-dropdown-item>
             <el-dropdown-item>修改密码</el-dropdown-item>
-            <el-dropdown-item divided>退出登录</el-dropdown-item>
+            <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -43,13 +43,22 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppStore } from '@/store/app'
 import { useUserStore } from '@/store/user'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
 const route = useRoute()
+const router = useRouter()
+
+async function handleLogout() {
+  await ElMessageBox.confirm('确认退出登录？', '提示', { type: 'warning' })
+  await userStore.logout()
+  ElMessage.success('已退出登录')
+  router.push('/login')
+}
 
 const breadcrumbs = computed(() =>
   route.matched

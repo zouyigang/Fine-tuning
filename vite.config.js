@@ -32,9 +32,9 @@ export default defineConfig({
   server: {
     port: 5180,
     open: true,
-    // 预留后端代理：联调时把 mock 关掉，走真实接口
+    // 后端代理：/api 转发到 FastAPI（已对接的模块走真实接口）
     proxy: {
-      // '/api': { target: 'http://localhost:8080', changeOrigin: true }
+      '/api': { target: 'http://localhost:8000', changeOrigin: true }
     }
   }
 })

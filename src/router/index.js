@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import Layout from '@/layout/index.vue'
+import { useUserStore } from '@/store/user'
 
 /**
  * 路由即菜单：侧边栏根据本配置自动渲染。
@@ -89,12 +90,18 @@ export const asyncRoutes = [
       { path: 'hyper-template', name: 'ConfigHyperTemplate', component: () => import('@/views/config/hyperTemplate.vue'), meta: { title: '超参模板管理', icon: 'Collection' } },
       { path: 'resource', name: 'ConfigResource', component: () => import('@/views/config/resource.vue'), meta: { title: '训练资源配置', icon: 'Platform' } },
       { path: 'auto-tune', name: 'ConfigAutoTune', component: () => import('@/views/config/autoTune.vue'), meta: { title: '自动调优配置', icon: 'MagicStick' } },
-      { path: 'permission', name: 'ConfigPermission', component: () => import('@/views/config/permission.vue'), meta: { title: '操作权限配置', icon: 'UserFilled' } }
+      { path: 'permission', name: 'ConfigPermission', component: () => import('@/views/config/permission.vue'), meta: { title: '操作权限配置', icon: 'UserFilled' } },
+      { path: 'operation-log', name: 'ConfigOperationLog', component: () => import('@/views/config/operationLog.vue'), meta: { title: '操作日志审计', icon: 'Document' } }
     ]
   }
 ]
 
 const constantRoutes = [
+  {
+    path: '/login',
+    component: () => import('@/views/login/index.vue'),
+    meta: { hidden: true }
+  },
   { path: '/', redirect: '/dashboard/index' },
   {
     path: '/:pathMatch(.*)*',
@@ -107,6 +114,30 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [...asyncRoutes, ...constantRoutes],
   scrollBehavior: () => ({ top: 0 })
+})
+
+// 全局路由守卫：未登录跳登录页；已登录访问登录页跳工作台；并按需拉取用户信息
+router.beforeEach(async (to) => {
+  const token = localStorage.getItem('token')
+
+  if (to.path === '/login') {
+    return token ? '/dashboard/index' : true
+  }
+
+  if (!token) {
+    return { path: '/login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} }
+  }
+
+  const userStore = useUserStore()
+  if (!userStore.userInfo.name) {
+    try {
+      await userStore.getInfo()
+    } catch (e) {
+      await userStore.logout()
+      return '/login'
+    }
+  }
+  return true
 })
 
 export default router

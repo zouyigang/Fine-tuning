@@ -26,6 +26,13 @@ service.interceptors.response.use(
   (response) => {
     const res = response.data
     if (res.code !== undefined && res.code !== 0 && res.code !== 200) {
+      // 401：未登录/登录过期，清 token 并跳登录页
+      if (res.code === 401) {
+        localStorage.removeItem('token')
+        if (!location.hash.includes('/login')) {
+          location.hash = '#/login'
+        }
+      }
       ElMessage.error(res.message || '请求失败')
       return Promise.reject(new Error(res.message || 'Error'))
     }
