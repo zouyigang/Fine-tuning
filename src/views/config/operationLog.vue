@@ -56,9 +56,10 @@
       <el-pagination
         class="mt-16"
         background
-        layout="total, prev, pager, next, jumper"
+        layout="total, sizes, prev, pager, next"
+        :page-sizes="[10, 20, 50, 100]"
         :total="total"
-        :page-size="query.pageSize"
+        v-model:page-size="query.pageSize"
         v-model:current-page="query.page"
         @change="load"
       />

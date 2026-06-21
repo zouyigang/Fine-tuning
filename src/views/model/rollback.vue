@@ -17,7 +17,7 @@
 
         <el-card shadow="never">
           <template #header>可回滚的稳定版本</template>
-          <el-table v-loading="loading" :data="candidates" border>
+          <el-table v-loading="loading" :data="pagedCandidates" border>
             <el-table-column prop="name" label="模型" min-width="130" />
             <el-table-column prop="version" label="版本" width="80" />
             <el-table-column prop="f1" label="F1" width="90" />
@@ -29,6 +29,7 @@
               <template #default="{ row }"><el-button type="warning" size="small" :icon="RefreshLeft" @click="rollback(row)">回滚至此</el-button></template>
             </el-table-column>
           </el-table>
+          <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="candidates.length" v-model:current-page="page" v-model:page-size="pageSize" />
         </el-card>
       </el-col>
 
@@ -49,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -58,6 +59,11 @@ import { getRollbackCandidates, getReleaseHistory } from '@/api/modules/model'
 const loading = ref(false)
 const candidates = ref([])
 const history = ref([])
+
+// 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedCandidates = computed(() => candidates.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 async function rollback(row) {
   await ElMessageBox.confirm(`确认回滚至 ${row.name} ${row.version}？业务不会中断。`, '快速回滚', { type: 'warning' })

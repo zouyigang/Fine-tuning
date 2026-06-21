@@ -52,8 +52,9 @@ const appStore = useAppStore()
 
 .app-main {
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 16px;
+  padding: 12px 16px;
   background-color: $page-bg;
 }
 </style>

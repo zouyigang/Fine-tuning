@@ -32,13 +32,13 @@
       <el-col :md="14">
         <el-card shadow="never" class="mb-16">
           <template #header>损失 / 准确率曲线</template>
-          <BaseChart :option="curveOption" height="320px" />
+          <BaseChart :option="curveOption" height="280px" />
         </el-card>
       </el-col>
       <el-col :md="10">
         <el-card shadow="never" class="mb-16">
           <template #header>资源占用（近 30s）</template>
-          <BaseChart :option="resourceOption" height="320px" />
+          <BaseChart :option="resourceOption" height="280px" />
         </el-card>
       </el-col>
     </el-row>

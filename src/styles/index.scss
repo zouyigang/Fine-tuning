@@ -67,6 +67,31 @@ a {
   margin-top: 16px;
 }
 
+// 列表表格统一风格：所有 el-table 共用浅灰表头、统一边框与悬停色。
+// 用双类名 `.el-table.el-table` 提高优先级，确保覆盖 Element 自身在 `.el-table` 上声明的
+// CSS 变量（其样式表加载晚于本文件，同优先级下会反超）。
+.el-table.el-table {
+  --el-table-header-bg-color: #f5f7fa;
+  --el-table-header-text-color: #1f2329;
+  --el-table-border-color: #ebeef5;
+  --el-table-row-hover-bg-color: #f0f7ff;
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+}
+
+// 左右分栏等高：在多列布局（el-row 内有多个 el-col）中，把每一列变成纵向 flex 容器，
+// 让列内「最后一张卡片」自动撑满剩余高度，从而左右/各列栏目高度保持一致；
+// 内容较少的一列会在底部自然留白，而不是出现高度参差。
+// 单列行（el-col 为唯一子元素）不受影响；本项目无响应式隐藏列，display:flex 不会与 display:none 冲突。
+.el-row > .el-col:not(:only-child) {
+  display: flex;
+  flex-direction: column;
+}
+.el-row > .el-col:not(:only-child) > .el-card:last-child {
+  flex: 1 0 auto;
+}
+
 // 路由切换动画
 .fade-transform-enter-active,
 .fade-transform-leave-active {

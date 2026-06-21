@@ -15,7 +15,7 @@
 
     <el-card shadow="never">
       <template #header>调度队列（按优先级排序，可拖动调整）</template>
-      <el-table :data="queue" border row-key="id">
+      <el-table :data="pagedQueue" border row-key="id">
         <el-table-column label="顺序" width="70" align="center">
           <template #default="{ row }"><el-tag type="info" round>{{ row.order }}</el-tag></template>
         </el-table-column>
@@ -31,13 +31,14 @@
         <el-table-column prop="gpu" label="资源" width="110" />
         <el-table-column prop="scheduledAt" label="计划执行时间" width="150" />
         <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row, $index }">
-            <el-button link type="primary" size="small" :disabled="$index === 0" @click="moveUp($index)">上移</el-button>
-            <el-button link type="primary" size="small" :disabled="$index === queue.length - 1" @click="moveDown($index)">下移</el-button>
-            <el-button link type="danger" size="small" @click="remove($index)">移除</el-button>
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" :disabled="queue[0] === row" @click="moveUp(row)">上移</el-button>
+            <el-button link type="primary" size="small" :disabled="queue[queue.length - 1] === row" @click="moveDown(row)">下移</el-button>
+            <el-button link type="danger" size="small" @click="remove(row)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="queue.length" v-model:current-page="page" v-model:page-size="pageSize" />
     </el-card>
 
     <el-dialog v-model="dialog" title="新建批量微调任务" width="600px">
@@ -67,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -81,18 +82,30 @@ const priority = ref('中')
 const runMode = ref('now')
 const runTime = ref(null)
 
+// 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedQueue = computed(() => queue.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+
 function reorder() {
   queue.value.forEach((q, i) => (q.order = i + 1))
 }
-function moveUp(i) {
+// 基于行对象（而非分页后的下标）操作，避免分页导致的错位
+function moveUp(row) {
+  const i = queue.value.indexOf(row)
+  if (i <= 0) return
   ;[queue.value[i - 1], queue.value[i]] = [queue.value[i], queue.value[i - 1]]
   reorder()
 }
-function moveDown(i) {
+function moveDown(row) {
+  const i = queue.value.indexOf(row)
+  if (i < 0 || i >= queue.value.length - 1) return
   ;[queue.value[i + 1], queue.value[i]] = [queue.value[i], queue.value[i + 1]]
   reorder()
 }
-function remove(i) {
+function remove(row) {
+  const i = queue.value.indexOf(row)
+  if (i < 0) return
   queue.value.splice(i, 1)
   reorder()
   ElMessage.success('已移除')

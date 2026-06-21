@@ -53,10 +53,34 @@ npm run dev
 
 ## 进度与待办
 
-- 已完成：P0 脚手架 / P1 建表+种子 / P2 鉴权(JWT) / P3 数据集 / P4 任务+模拟训练 / P5 评估·版本·配置 / 工作台总览对接 / P6-操作日志。
+**已完成**
+
+- P0 脚手架 / P1 建表+种子 / P2 鉴权(JWT) / P3 数据集 / P4 任务+模拟训练 / P5 评估·版本·配置 / 工作台总览对接 / P6-操作日志。
 - 前端 `api/modules/*` **已全部对接真实接口（无 mock 残留）**。
+- 已实现的写接口：`createTask`/`updateTaskStatus`、`createDataset`/`deleteDataset`、`updateModelStatus`、`saveBaseModel`、`saveHyperTemplate`/`deleteHyperTemplate`、`saveRolePermissions`、登录登出 + 操作日志自动记录。
 - 操作日志：`core/oplog.py` 中间件自动记录所有写操作（GET 不记），登录在 `routers/auth.py` 内单独记（登录前无 token）；查询接口 `/log/list`、`/log/modules`；前端页「配置管理 → 操作日志审计」。表 `operation_log`。
-- 待办 P6 剩余：Alembic 迁移、Docker compose 一键启动。
+
+**待办（按业务功能缺口梳理，2026-06-19）**
+
+> 说明：以下「占位」= 前端有按钮但只弹 toast / setTimeout 假成功，未落库；「缺写接口」= 后端只有 GET 没有对应写接口。
+
+1. 真实微调训练引擎（最大缺口，建议单独排期）
+   - 现为模拟训练（`services/trainer.py` 造假指标）。缺：真实 pipeline（LLaMA-Factory/PEFT 等）、超参真正生效、GPU/资源调度、断点续训、训练完成自动生成 `model_version`、日志/指标来自真实进程。
+2. 模型版本管理写操作（除「改状态」外几乎全缺，且未写审计）
+   - 创建灰度发布 / 扩大流量（`gray.vue`）、全量上线+写 `release_history`（`release.vue`）、快速回滚+写审计（`rollback.vue` 纯前端）、模型导出 / 部署到节点（`deploy.vue`）、归档清理（`archive.vue`）。
+3. 模型效果评估写操作
+   - 生成报告（`report.vue` 占位，缺创建评估任务/报告）、提交人工复核结果（`review.vue` 缺更新 `review_sample`）、错误案例导出（`errors.vue` 占位）。
+4. 数据集管理写操作
+   - 脱敏执行（`desensitize.vue` 占位）、标注提交（`annotation.vue`）、版本回滚/新建版本（`version.vue`）、权限保存（`permission.vue` 只有 GET）、真实文件上传（导入仅写元数据）。
+5. 微调任务管理补全
+   - 批量调度移除/排序持久化（`schedule.vue`）、超参保存模板/应用到任务（`hyperparams.vue` 部分占位）、训练日志真实下载（`logs.vue`）。
+6. 微调配置管理写操作
+   - 资源配额保存（`resource.vue` 只有 GET）、自动调优保存/启动（`autoTune.vue` 只有 GET）。
+7. 系统/平台级
+   - 用户管理 CRUD（仅 4 个种子账号，无增删改密/注册）、**接口层 RBAC 强制**（角色权限目前仅前端展示，后端未按角色拦截，任何登录用户可调所有写接口）、文件存储/下载服务、Token 刷新。
+8. 工程收尾（原 P6 剩余）：Alembic 迁移、Docker compose 一键启动。
+
+**优先级建议**：① 模型上线/回滚/灰度 + 评估报告/复核（打通"评估→上线→回滚"审批闭环，且写入操作日志）→ ② 数据集上传/脱敏/标注 + 配额/调优保存 → ③ 接口层 RBAC + 用户管理 → ④ 真实微调引擎（重，独立排期）。
 
 ## 提交约定
 

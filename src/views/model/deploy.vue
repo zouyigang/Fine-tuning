@@ -4,7 +4,7 @@
 
     <el-row :gutter="16">
       <el-col :md="10">
-        <el-card shadow="never" class="mb-16">
+        <el-card shadow="never">
           <template #header>模型导出</template>
           <el-form label-width="100px">
             <el-form-item label="选择模型">
@@ -31,7 +31,7 @@
       <el-col :md="14">
         <el-card shadow="never">
           <template #header>部署目标环境</template>
-          <el-table :data="targets" border>
+          <el-table :data="pagedTargets" border>
             <el-table-column prop="name" label="部署环境" min-width="160" />
             <el-table-column prop="type" label="类型" width="90">
               <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.type }}</el-tag></template>
@@ -49,6 +49,7 @@
               </template>
             </el-table-column>
           </el-table>
+          <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="targets.length" v-model:current-page="page" v-model:page-size="pageSize" />
         </el-card>
       </el-col>
     </el-row>
@@ -63,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -75,6 +76,11 @@ const quant = ref('none')
 const exporting = ref(false)
 const targets = ref([])
 const deployLogs = ref([])
+
+// 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedTargets = computed(() => targets.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 function exportModel() {
   exporting.value = true

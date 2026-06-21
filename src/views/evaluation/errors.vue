@@ -22,7 +22,7 @@
               </div>
             </div>
           </template>
-          <el-table v-loading="loading" :data="list" border size="small">
+          <el-table v-loading="loading" :data="list" border>
             <el-table-column prop="errorType" label="错误类型" width="130">
               <template #default="{ row }"><el-tag type="danger" size="small" effect="plain">{{ row.errorType }}</el-tag></template>
             </el-table-column>
@@ -31,7 +31,7 @@
             <el-table-column prop="actual" label="模型输出" width="130" />
             <el-table-column prop="count" label="出现次数" width="90" sortable />
           </el-table>
-          <el-pagination class="mt-16" small background layout="total, prev, pager, next" :total="total" v-model:current-page="query.page" @change="load" />
+          <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="total" v-model:current-page="query.page" v-model:page-size="query.pageSize" @change="load" />
         </el-card>
       </el-col>
     </el-row>

@@ -67,7 +67,7 @@ onMounted(load)
   background: #1e1e1e;
   border-radius: 4px;
   padding: 12px 16px;
-  height: 520px;
+  height: 500px;
   overflow: auto;
   font-family: Consolas, 'Courier New', monospace;
   font-size: 12.5px;

@@ -11,7 +11,7 @@
               <el-button type="primary" size="small" :icon="Plus" @click="addRule">新增规则</el-button>
             </div>
           </template>
-          <el-table :data="rules" border>
+          <el-table :data="pagedRules" border>
             <el-table-column prop="field" label="敏感字段" width="120" />
             <el-table-column prop="rule" label="脱敏规则" min-width="160" />
             <el-table-column prop="sample" label="脱敏示例" min-width="170">
@@ -21,6 +21,7 @@
               <template #default="{ row }"><el-switch v-model="row.enabled" /></template>
             </el-table-column>
           </el-table>
+          <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="rules.length" v-model:current-page="page" v-model:page-size="pageSize" />
         </el-card>
       </el-col>
 
@@ -63,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Plus, Lock } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -72,6 +73,11 @@ import { getDesensitizeRules } from '@/api/modules/dataset'
 const rules = ref([])
 const targetDataset = ref('')
 const running = ref(false)
+
+// 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedRules = computed(() => rules.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 onMounted(async () => {
   rules.value = await getDesensitizeRules()

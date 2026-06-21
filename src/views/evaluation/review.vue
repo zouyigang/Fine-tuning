@@ -28,7 +28,7 @@
         </el-table-column>
       </el-table>
       <div class="flex-between mt-16">
-        <el-pagination background layout="total, prev, pager, next" :total="total" v-model:current-page="query.page" @change="load" />
+        <el-pagination background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="total" v-model:current-page="query.page" v-model:page-size="query.pageSize" @change="load" />
         <el-button type="success" @click="submit">提交复核结果</el-button>
       </div>
     </el-card>

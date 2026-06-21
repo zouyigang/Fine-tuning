@@ -26,7 +26,7 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-pagination class="mt-16" small background layout="prev, pager, next" :total="total" v-model:current-page="query.page" @change="load" />
+          <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="total" v-model:current-page="query.page" v-model:page-size="query.pageSize" @change="load" />
         </el-card>
       </el-col>
 
@@ -75,7 +75,7 @@ const loading = ref(false)
 const list = ref([])
 const total = ref(0)
 const active = ref(null)
-const query = reactive({ page: 1, pageSize: 8 })
+const query = reactive({ page: 1, pageSize: 10 })
 
 const entityTypes = [
   { label: '人名', color: '#2f54eb' },

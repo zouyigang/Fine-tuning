@@ -21,8 +21,8 @@ defineProps({
 .page-header {
   background: #fff;
   border-radius: 4px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
+  padding: 12px 20px;
+  margin-bottom: 12px;
   border-left: 3px solid $primary-color;
 }
 .title-row {

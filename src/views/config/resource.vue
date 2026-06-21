@@ -36,7 +36,7 @@
       <template #header>
         <div class="flex-between"><span>部门资源配额</span><el-button type="primary" size="small" @click="save">保存配额</el-button></div>
       </template>
-      <el-table :data="data.quotas" border>
+      <el-table :data="pagedQuotas" border>
         <el-table-column prop="dept" label="部门" width="140" />
         <el-table-column label="GPU 配额" width="200">
           <template #default="{ row }"><el-input-number v-model="row.gpuQuota" :min="0" :max="32" size="small" /></template>
@@ -51,18 +51,24 @@
           <template #default="{ row }"><el-input-number v-model="row.maxConcurrent" :min="1" :max="10" size="small" /></template>
         </el-table-column>
       </el-table>
+      <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="data.quotas.length" v-model:current-page="page" v-model:page-size="pageSize" />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { reactive, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
 import { getResourceQuotas } from '@/api/modules/config'
 
 const data = reactive({ cluster: null, quotas: [] })
+
+// 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedQuotas = computed(() => data.quotas.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 function gauge(title, value, color) {
   return {

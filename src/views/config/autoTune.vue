@@ -2,9 +2,9 @@
   <div>
     <PageHeader title="自动调优配置" description="开启自动超参调优，系统自动搜索最优超参组合，可配置调优目标（如最大化 F1、最小化训练时间）" />
 
-    <el-row :gutter="16">
+    <el-row :gutter="16" class="mb-16">
       <el-col :md="10">
-        <el-card shadow="never" class="mb-16">
+        <el-card shadow="never">
           <template #header>
             <div class="flex-between"><span>调优配置</span><el-switch v-model="cfg.enabled" active-text="启用自动调优" /></div>
           </template>
@@ -30,7 +30,18 @@
             <el-form-item><el-button type="primary" @click="save">保存并启动调优</el-button></el-form-item>
           </el-form>
         </el-card>
+      </el-col>
 
+      <el-col :md="14">
+        <el-card shadow="never">
+          <template #header>试验结果对比（F1）</template>
+          <BaseChart :option="trialChart" height="280px" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16">
+      <el-col :md="10">
         <el-card shadow="never">
           <template #header>搜索空间</template>
           <el-table :data="cfg.searchSpace" size="small" border>
@@ -42,15 +53,11 @@
       </el-col>
 
       <el-col :md="14">
-        <el-card shadow="never" class="mb-16">
-          <template #header>试验结果对比（F1）</template>
-          <BaseChart :option="trialChart" height="280px" />
-        </el-card>
         <el-card shadow="never">
           <template #header>
             <div class="flex-between"><span>试验记录</span><el-tag type="success">最优 F1：{{ bestF1 }}</el-tag></div>
           </template>
-          <el-table :data="cfg.trials" border size="small">
+          <el-table :data="pagedTrials" border size="small">
             <el-table-column prop="trial" label="#" width="50" />
             <el-table-column prop="lr" label="学习率" />
             <el-table-column prop="batchSize" label="批次" width="70" />
@@ -62,6 +69,7 @@
               <template #default="{ row }"><el-tag size="small" :type="row.status === '已完成' ? 'success' : 'primary'">{{ row.status }}</el-tag></template>
             </el-table-column>
           </el-table>
+          <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="cfg.trials.length" v-model:current-page="page" v-model:page-size="pageSize" />
         </el-card>
       </el-col>
     </el-row>
@@ -69,7 +77,7 @@
 </template>
 
 <script setup>
-import { reactive, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
@@ -77,6 +85,11 @@ import { getAutoTuneConfig } from '@/api/modules/config'
 
 const cfg = reactive({ enabled: true, objective: '', searchAlgo: '', maxTrials: 30, parallelTrials: 4, searchSpace: [], trials: [] })
 const bestF1 = computed(() => (cfg.trials.length ? Math.max(...cfg.trials.map((t) => t.f1)) : 0))
+
+// 试验记录前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedTrials = computed(() => cfg.trials.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 const trialChart = computed(() => ({
   tooltip: { trigger: 'axis' },

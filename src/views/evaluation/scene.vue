@@ -14,7 +14,7 @@
 
     <el-card shadow="never">
       <template #header>按案件类型验证结果</template>
-      <el-table :data="data.cases" border>
+      <el-table :data="pagedCases" border>
         <el-table-column prop="caseNo" label="案件编号" min-width="180" />
         <el-table-column prop="type" label="案件类型" width="120">
           <template #default="{ row }"><el-tag size="small">{{ row.type }}</el-tag></template>
@@ -32,17 +32,24 @@
           <template #default><el-button link type="primary" size="small">查看明细</el-button></template>
         </el-table-column>
       </el-table>
+      <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="data.cases.length" v-model:current-page="page" v-model:page-size="pageSize" />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { reactive, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import { getSceneValidation } from '@/api/modules/evaluation'
 
 const data = reactive({ summary: null, cases: [] })
+
+// 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
+const page = ref(1)
+const pageSize = ref(10)
+const pagedCases = computed(() => data.cases.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+
 onMounted(async () => Object.assign(data, await getSceneValidation()))
 </script>

@@ -115,7 +115,7 @@ function saveAsTemplate() {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 14px 0;
+  padding: 11px 0;
   border-bottom: 1px dashed #eee;
 }
 .param-label {

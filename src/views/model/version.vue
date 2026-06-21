@@ -40,7 +40,7 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :total="total" v-model:current-page="query.page" v-model:page-size="query.pageSize" @change="load" />
+      <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="total" v-model:current-page="query.page" v-model:page-size="query.pageSize" @change="load" />
     </el-card>
   </div>
 </template>

@@ -46,7 +46,7 @@
             </el-table-column>
           </el-table>
         </el-col>
-        <el-col :md="10"><BaseChart :option="chartOption" height="320px" /></el-col>
+        <el-col :md="10"><BaseChart :option="chartOption" height="280px" /></el-col>
       </el-row>
     </el-card>
   </div>
