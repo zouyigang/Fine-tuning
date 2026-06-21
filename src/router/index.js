@@ -91,6 +91,7 @@ export const asyncRoutes = [
       { path: 'resource', name: 'ConfigResource', component: () => import('@/views/config/resource.vue'), meta: { title: '训练资源配置', icon: 'Platform' } },
       { path: 'auto-tune', name: 'ConfigAutoTune', component: () => import('@/views/config/autoTune.vue'), meta: { title: '自动调优配置', icon: 'MagicStick' } },
       { path: 'permission', name: 'ConfigPermission', component: () => import('@/views/config/permission.vue'), meta: { title: '操作权限配置', icon: 'UserFilled' } },
+      { path: 'user-manage', name: 'ConfigUserManage', component: () => import('@/views/config/userManage.vue'), meta: { title: '用户与角色管理', icon: 'User' } },
       { path: 'operation-log', name: 'ConfigOperationLog', component: () => import('@/views/config/operationLog.vue'), meta: { title: '操作日志审计', icon: 'Document' } }
     ]
   }
@@ -100,6 +101,12 @@ const constantRoutes = [
   {
     path: '/login',
     component: () => import('@/views/login/index.vue'),
+    meta: { hidden: true }
+  },
+  {
+    path: '/screen',
+    name: 'DataScreen',
+    component: () => import('@/views/screen/index.vue'),
     meta: { hidden: true }
   },
   { path: '/', redirect: '/dashboard/index' },

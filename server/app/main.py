@@ -14,8 +14,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.config import settings
 from app.core.database import init_db
 from app.core.response import ok, err
-from app.deps import get_current_user
-from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log
+from app.deps import enforce_rbac
+from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log, user
 from app.core.oplog import operation_log_middleware
 
 
@@ -49,14 +49,16 @@ app.middleware("http")(operation_log_middleware)
 # 鉴权路由：公开（登录无需 token）
 app.include_router(auth.router, prefix="/api")
 
-# 业务路由统一挂在 /api 下，并要求登录（注入 get_current_user 依赖）
-app.include_router(dataset.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(task.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(evaluation.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(model.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(config.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(get_current_user)])
-app.include_router(log.router, prefix="/api", dependencies=[Depends(get_current_user)])
+# 业务路由统一挂在 /api 下，注入 enforce_rbac 依赖：
+# 内部先做登录校验（依赖 get_current_user），再按角色权限拦截高风险写操作。
+app.include_router(dataset.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(task.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(evaluation.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(model.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(config.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(log.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(user.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 
 
 @app.get("/api/health")

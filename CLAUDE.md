@@ -61,6 +61,7 @@ npm run dev
 - 操作日志：`core/oplog.py` 中间件自动记录所有写操作（GET 不记），登录在 `routers/auth.py` 内单独记（登录前无 token）；查询接口 `/log/list`、`/log/modules`；前端页「配置管理 → 操作日志审计」。表 `operation_log`。
 - **「评估→上线→回滚」审批闭环（2026-06-21）**：灰度发布创建/扩流量（`POST /model/gray-releases`、`PUT /model/gray-releases/{id}/traffic`，关联模型置 `gray`）、全量上线（`POST /model/{id}/release`：目标置 `online`+同类型原在线降 `offline`+写 `release_history`，operator 取当前用户）、快速回滚（`POST /model/{id}/rollback`：同样降级+写 `release_history`）、评估报告生成（`POST /evaluation/reports`）、人工复核提交（`POST /evaluation/review-results` 批量更新 `review_sample`+重算准确率）。以上写操作均经中间件自动写审计；前端 `gray/release/rollback.vue`、`evaluation/report/review.vue` 已接真实接口（候选模型用 `model/list?status=` 过滤）。
 - **数据集 + 配置写操作（2026-06-21）**：脱敏规则新增/启停（`POST/PUT /dataset/desensitize-rules`）、执行脱敏（`POST /dataset/desensitize/run` 置 `dataset.desensitized=True`）、版本回滚（`POST /dataset/versions/{id}/rollback` 切 `is_current`+同步主表版本号）、标注进度提交（`PUT /dataset/annotation-tasks/{id}/progress`，满 100% 转待审核）、权限批量保存（`POST /dataset/permissions`）、资源配额保存（`POST /config/resource-quotas` 按部门更新）、自动调优保存（`POST /config/autotune` 单行 upsert）。均经中间件自动写审计；前端 `desensitize/version/annotation/permission.vue`、`config/resource/autoTune.vue` 已接真实接口（目标数据集/候选用 `dataset/list`）。`VersionOut` 已补 `id` 字段。
+- **接口层 RBAC + 用户管理（2026-06-21）**：`deps.py` 新增集中式 `enforce_rbac` 依赖（含 `_RBAC_RULES` 方法+路径正则→所需权限映射，仿 oplog `_RULES`），`main.py` 业务路由依赖由 `get_current_user` 换为 `enforce_rbac`。系统管理员放行全部；其余角色按 `sys_role.granted` 拦截高风险写操作（创建任务/配超参/审批上线/回滚/配额/权限分配），缺权限返回 `code:403`（HTTP 仍 200）。用户管理 CRUD：`/user/list`(GET)、`/user`(POST)、`/user/{id}`(PUT/DELETE)、`/user/{id}/reset-password`(POST)、`/user/{id}/status`(PUT)，写操作需「权限分配」；**禁止删除/禁用当前登录账号**防自锁。前端新增页「配置管理 → 用户与角色管理」(`config/userManage.vue`) + `api/modules/user.js`。**oplog 中间件升级**：改为读响应体 envelope `code` 判定成败（重建 response），RBAC 拒绝/业务失败如实记「失败」+原因，不再因 HTTP 200 误记「成功」。
 
 **待办（按业务功能缺口梳理，2026-06-19）**
 
@@ -78,11 +79,11 @@ npm run dev
    - 批量调度移除/排序持久化（`schedule.vue`）、超参保存模板/应用到任务（`hyperparams.vue` 部分占位）、训练日志真实下载（`logs.vue`）。
 6. 微调配置管理写操作（已完成 ✅）
    - 资源配额保存、自动调优保存/启动均已落库。
-7. 系统/平台级
-   - 用户管理 CRUD（仅 4 个种子账号，无增删改密/注册）、**接口层 RBAC 强制**（角色权限目前仅前端展示，后端未按角色拦截，任何登录用户可调所有写接口）、文件存储/下载服务、Token 刷新。
+7. 系统/平台级（接口层 RBAC + 用户管理已完成 ✅，剩余）
+   - 文件存储/下载服务、Token 刷新。RBAC 仅覆盖权限目录中的 7 类高风险写操作，其余写操作仍登录即可（权限目录无对应项）。
 8. 工程收尾（原 P6 剩余）：Alembic 迁移、Docker compose 一键启动。
 
-**优先级建议**：~~① 模型上线/回滚/灰度 + 评估报告/复核~~（✅）→ ~~② 数据集脱敏/标注/版本/权限 + 配额/调优保存~~（✅，剩真实文件上传）→ ③ 接口层 RBAC + 用户管理 → ④ 真实微调引擎（重，独立排期）。
+**优先级建议**：~~① 模型上线/回滚/灰度 + 评估报告/复核~~（✅）→ ~~② 数据集脱敏/标注/版本/权限 + 配额/调优保存~~（✅，剩真实文件上传）→ ~~③ 接口层 RBAC + 用户管理~~（✅）→ ④ 真实微调引擎（重，独立排期）。
 
 ## 提交约定
 
