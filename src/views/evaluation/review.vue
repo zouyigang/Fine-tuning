@@ -40,7 +40,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
-import { getReviewSamples, getReviewSummary } from '@/api/modules/evaluation'
+import { getReviewSamples, getReviewSummary, submitReviewResults } from '@/api/modules/evaluation'
 
 const loading = ref(false)
 const list = ref([])
@@ -55,8 +55,19 @@ async function load() {
   total.value = res.total
   loading.value = false
 }
-function submit() {
+async function submit() {
+  // 仅提交当前页已给出「正确/错误」结论的样本
+  const results = list.value
+    .filter((r) => r.result === '正确' || r.result === '错误')
+    .map((r) => ({ id: r.id, result: r.result }))
+  if (!results.length) {
+    ElMessage.warning('请先对样本标注复核结果')
+    return
+  }
+  await submitReviewResults(results)
   ElMessage.success('复核结果已提交，准确率已更新')
+  summary.value = await getReviewSummary()
+  await load()
 }
 onMounted(async () => {
   summary.value = await getReviewSummary()

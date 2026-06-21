@@ -18,6 +18,35 @@ export function getGrayReleases() {
   return service.get('/model/gray-releases')
 }
 
+// 新建灰度发布（payload: { modelId, name, scope, traffic }）
+export function createGrayRelease(payload) {
+  return service.post('/model/gray-releases', payload)
+}
+
+// 扩大灰度流量
+export function expandGrayTraffic(id, traffic) {
+  return service.put(`/model/gray-releases/${id}/traffic`, { traffic })
+}
+
+// 全量上线（自动降级同类型原在线模型 + 写上线记录）
+export function releaseModel(id, payload = {}) {
+  return service.post(`/model/${id}/release`, payload)
+}
+
+// 快速回滚（目标模型置在线 + 写回滚审计记录）
+export function rollbackModel(id, payload = {}) {
+  return service.post(`/model/${id}/rollback`, payload)
+}
+
+// 候选模型：灰度待发布（已评估通过）/ 全量待上线（灰度中）
+export function getGrayCandidates() {
+  return service.get('/model/list', { params: { status: 'evaluated', pageSize: 100 } })
+}
+
+export function getReleaseCandidates() {
+  return service.get('/model/list', { params: { status: 'gray', pageSize: 100 } })
+}
+
 export function getGrayTrend() {
   return service.get('/model/gray-trend')
 }

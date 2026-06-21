@@ -24,7 +24,7 @@
               <el-col :span="8"><div class="s-val ok">{{ g.accuracy }}%</div><div class="s-label">准确率</div></el-col>
             </el-row>
             <div class="g-actions">
-              <el-button size="small" type="success" @click="ElMessage.success('已扩大灰度流量')">扩大流量</el-button>
+              <el-button size="small" type="success" @click="expand(g)">扩大流量</el-button>
               <el-button size="small" type="warning">暂停</el-button>
               <el-button size="small" type="danger">回滚</el-button>
             </div>
@@ -40,13 +40,17 @@
 
     <el-dialog v-model="dialog" title="新建灰度发布" width="560px">
       <el-form label-width="110px">
-        <el-form-item label="选择模型"><el-select placeholder="待评估通过的模型" style="width: 100%"><el-option label="实体识别模型 v5.3" value="1" /></el-select></el-form-item>
+        <el-form-item label="选择模型">
+          <el-select v-model="modelId" placeholder="待评估通过的模型" style="width: 100%">
+            <el-option v-for="m in candidates" :key="m.id" :label="`${m.name} ${m.version}`" :value="m.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="生效范围">
           <el-radio-group v-model="scope"><el-radio value="dept">按部门</el-radio><el-radio value="case">按案件</el-radio></el-radio-group>
         </el-form-item>
         <el-form-item :label="scope === 'dept' ? '选择部门' : '选择案件'">
-          <el-select multiple placeholder="可多选" style="width: 100%">
-            <el-option label="刑侦支队" value="1" /><el-option label="经侦支队" value="2" />
+          <el-select v-model="scopeTargets" multiple placeholder="可多选" style="width: 100%">
+            <el-option v-for="o in scopeOptions" :key="o" :label="o" :value="o" />
           </el-select>
         </el-form-item>
         <el-form-item label="初始流量"><el-slider v-model="traffic" :max="100" :format-tooltip="(v) => v + '%'" /></el-form-item>
@@ -62,21 +66,57 @@ import { Promotion } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
-import { getGrayReleases, getGrayTrend } from '@/api/modules/model'
+import { getGrayReleases, getGrayTrend, getGrayCandidates, createGrayRelease, expandGrayTraffic } from '@/api/modules/model'
 
 const releases = ref([])
 const trend = ref({ points: [], accuracy: [], errorRate: [] })
+const candidates = ref([])
 const dialog = ref(false)
 const scope = ref('dept')
 const traffic = ref(10)
+const modelId = ref(null)
+const scopeTargets = ref([])
 
-function confirm() {
-  dialog.value = false
-  ElMessage.success('灰度发布已创建')
+const DEPT_OPTIONS = ['刑侦支队', '经侦支队', '网安支队', '朝阳分局', '海淀分局']
+const CASE_OPTIONS = ['专案 2026-018', '专案 2026-027', '专案 2026-033']
+const scopeOptions = computed(() => (scope.value === 'dept' ? DEPT_OPTIONS : CASE_OPTIONS))
+
+async function loadReleases() {
+  releases.value = await getGrayReleases()
 }
+
+async function confirm() {
+  if (!modelId.value) {
+    ElMessage.warning('请选择要灰度发布的模型')
+    return
+  }
+  const m = candidates.value.find((c) => c.id === modelId.value)
+  await createGrayRelease({
+    modelId: modelId.value,
+    name: m ? `${m.name} ${m.version}` : undefined,
+    scope: scopeTargets.value.length ? scopeTargets.value.join(' / ') : '全部',
+    traffic: traffic.value
+  })
+  dialog.value = false
+  modelId.value = null
+  scopeTargets.value = []
+  traffic.value = 10
+  ElMessage.success('灰度发布已创建')
+  await loadReleases()
+}
+
+async function expand(g) {
+  const next = Math.min(100, (g.traffic || 0) + 10)
+  await expandGrayTraffic(g.id, next)
+  g.traffic = next
+  ElMessage.success(`已扩大灰度流量至 ${next}%`)
+}
+
 onMounted(async () => {
   releases.value = await getGrayReleases()
   trend.value = await getGrayTrend()
+  const res = await getGrayCandidates()
+  candidates.value = res.list || []
 })
 
 const trendOption = computed(() => ({

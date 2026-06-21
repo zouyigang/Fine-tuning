@@ -44,3 +44,13 @@ export function getErrorCases(params = {}) {
 export function getReportList(params = {}) {
   return service.get('/evaluation/reports', { params })
 }
+
+// 生成评估报告（payload: { model, modelType, sections, format }）
+export function generateReport(payload) {
+  return service.post('/evaluation/reports', payload)
+}
+
+// 提交人工复核结果（results: [{ id, result }]）
+export function submitReviewResults(results) {
+  return service.post('/evaluation/review-results', { results })
+}

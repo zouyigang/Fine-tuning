@@ -33,7 +33,11 @@
     <!-- 生成报告对话框 -->
     <el-dialog v-model="genDialog" title="生成评估报告" width="560px">
       <el-form label-width="110px">
-        <el-form-item label="选择模型"><el-select placeholder="请选择" style="width: 100%"><el-option label="实体识别模型 v5.2" value="1" /><el-option label="OCR 识别模型 v3.4" value="2" /></el-select></el-form-item>
+        <el-form-item label="选择模型">
+          <el-select v-model="genModel" placeholder="请选择" style="width: 100%" filterable>
+            <el-option v-for="m in models" :key="m.id" :label="`${m.name} ${m.version}`" :value="`${m.name} ${m.version}`" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="报告内容">
           <el-checkbox-group v-model="sections">
             <el-checkbox value="params">训练参数</el-checkbox>
@@ -80,7 +84,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getReportList } from '@/api/modules/evaluation'
+import { getReportList, generateReport } from '@/api/modules/evaluation'
+import { getModelList } from '@/api/modules/model'
 
 const loading = ref(false)
 const list = ref([])
@@ -91,6 +96,8 @@ const genDialog = ref(false)
 const gen = ref(false)
 const sections = ref(['params', 'metrics', 'scene', 'errors'])
 const format = ref('pdf')
+const genModel = ref('')
+const models = ref([])
 
 const previewDrawer = ref(false)
 const current = ref(null)
@@ -102,20 +109,31 @@ async function load() {
   total.value = res.total
   loading.value = false
 }
-function generate() {
+async function generate() {
+  if (!genModel.value) {
+    ElMessage.warning('请选择要评估的模型')
+    return
+  }
   gen.value = true
-  setTimeout(() => {
-    gen.value = false
+  try {
+    await generateReport({ model: genModel.value, sections: sections.value, format: format.value })
     genDialog.value = false
+    genModel.value = ''
     ElMessage.success('报告已生成')
-    load()
-  }, 1200)
+    await load()
+  } finally {
+    gen.value = false
+  }
 }
 function preview(row) {
   current.value = row
   previewDrawer.value = true
 }
-onMounted(load)
+onMounted(async () => {
+  await load()
+  const res = await getModelList({ pageSize: 100 })
+  models.value = res.list || []
+})
 </script>
 
 <style lang="scss" scoped>

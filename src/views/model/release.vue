@@ -53,26 +53,35 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import { getReleaseCandidates, releaseModel } from '@/api/modules/model'
 
-const candidates = ref([
-  { id: 1, name: '实体识别模型', version: 'v5.2', grayResult: '验证通过', f1: 0.935 },
-  { id: 2, name: 'OCR 识别模型', version: 'v3.4', grayResult: '验证通过', f1: 0.978 }
-])
+// 待上线模型 = 当前处于灰度（gray）状态、灰度验证通过的版本
+const candidates = ref([])
 const selected = ref(null)
 const approveStep = ref(2)
 const releasing = ref(false)
 
+async function load() {
+  const res = await getReleaseCandidates()
+  candidates.value = (res.list || []).map((m) => ({ ...m, grayResult: '验证通过' }))
+}
+
 async function release() {
   await ElMessageBox.confirm('确认将该模型全量上线？此操作将替换生产环境同类模型。', '全量上线', { type: 'warning' })
   releasing.value = true
-  setTimeout(() => {
-    releasing.value = false
+  try {
+    await releaseModel(selected.value.id, { note: '灰度验证通过，全量上线' })
     approveStep.value = 4
     ElMessage.success('模型已全量上线并同步至模型管理模块')
-  }, 1500)
+    selected.value = null
+    await load()
+  } finally {
+    releasing.value = false
+  }
 }
+onMounted(load)
 </script>

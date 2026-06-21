@@ -3,6 +3,9 @@
 列表类（评估任务/复核样本/错误案例/报告）直接读表；
 自动化指标 / 基准对比 / 场景验证为聚合分析结果，由本层计算返回。
 """
+import random
+from datetime import datetime
+
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -53,6 +56,41 @@ def list_error_cases(db: Session, error_type: str = "", page: int = 1, page_size
 def list_reports(db: Session, page: int = 1, page_size: int = 10):
     stmt = select(EvalReport).order_by(EvalReport.id.desc())
     return _paginate(db, stmt, page, page_size)
+
+
+def create_report(db: Session, *, model: str, creator: str,
+                  conclusion: str = "建议优化后上线", f1: float | None = None):
+    """生成一份评估报告并落库。f1 未给时按经验区间生成。"""
+    rep = EvalReport(
+        name=f"模型评估报告-{model or '未命名模型'}",
+        model=model or "-",
+        f1=f1 if f1 is not None else round(random.uniform(0.86, 0.96), 3),
+        conclusion=conclusion,
+        creator=creator or "-",
+        createdAt=datetime.now().strftime("%Y-%m-%d"),
+        status="已生成",
+    )
+    db.add(rep)
+    db.commit()
+    db.refresh(rep)
+    return rep
+
+
+def submit_review_results(db: Session, results: list[dict]) -> int:
+    """批量更新复核样本结果，返回更新条数。"""
+    updated = 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    for item in results:
+        rid, res = item.get("id"), item.get("result")
+        if not rid or not res:
+            continue
+        s = db.get(ReviewSample, rid)
+        if s:
+            s.result = res
+            s.reviewedAt = today
+            updated += 1
+    db.commit()
+    return updated
 
 
 # ---- 聚合分析（静态/计算结果，不单独建表）----

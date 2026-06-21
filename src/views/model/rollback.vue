@@ -54,7 +54,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getRollbackCandidates, getReleaseHistory } from '@/api/modules/model'
+import { getRollbackCandidates, getReleaseHistory, rollbackModel } from '@/api/modules/model'
 
 const loading = ref(false)
 const candidates = ref([])
@@ -65,17 +65,19 @@ const page = ref(1)
 const pageSize = ref(10)
 const pagedCandidates = computed(() => candidates.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
-async function rollback(row) {
-  await ElMessageBox.confirm(`确认回滚至 ${row.name} ${row.version}？业务不会中断。`, '快速回滚', { type: 'warning' })
-  ElMessage.success(`已回滚至 ${row.version}，回滚记录已写入审计日志`)
-  history.value.unshift({ version: row.version, action: '回滚', operator: '张三', time: '2026-06-09 10:40', note: '手动回滚' })
-}
-onMounted(async () => {
+async function load() {
   loading.value = true
   candidates.value = await getRollbackCandidates()
   history.value = await getReleaseHistory()
   loading.value = false
-})
+}
+async function rollback(row) {
+  await ElMessageBox.confirm(`确认回滚至 ${row.name} ${row.version}？业务不会中断。`, '快速回滚', { type: 'warning' })
+  await rollbackModel(row.id, { note: `手动回滚至 ${row.version}` })
+  ElMessage.success(`已回滚至 ${row.version}，回滚记录已写入审计日志`)
+  await load()
+}
+onMounted(load)
 </script>
 
 <style lang="scss" scoped>

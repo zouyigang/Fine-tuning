@@ -59,6 +59,7 @@ npm run dev
 - 前端 `api/modules/*` **已全部对接真实接口（无 mock 残留）**。
 - 已实现的写接口：`createTask`/`updateTaskStatus`、`createDataset`/`deleteDataset`、`updateModelStatus`、`saveBaseModel`、`saveHyperTemplate`/`deleteHyperTemplate`、`saveRolePermissions`、登录登出 + 操作日志自动记录。
 - 操作日志：`core/oplog.py` 中间件自动记录所有写操作（GET 不记），登录在 `routers/auth.py` 内单独记（登录前无 token）；查询接口 `/log/list`、`/log/modules`；前端页「配置管理 → 操作日志审计」。表 `operation_log`。
+- **「评估→上线→回滚」审批闭环（2026-06-21）**：灰度发布创建/扩流量（`POST /model/gray-releases`、`PUT /model/gray-releases/{id}/traffic`，关联模型置 `gray`）、全量上线（`POST /model/{id}/release`：目标置 `online`+同类型原在线降 `offline`+写 `release_history`，operator 取当前用户）、快速回滚（`POST /model/{id}/rollback`：同样降级+写 `release_history`）、评估报告生成（`POST /evaluation/reports`）、人工复核提交（`POST /evaluation/review-results` 批量更新 `review_sample`+重算准确率）。以上写操作均经中间件自动写审计；前端 `gray/release/rollback.vue`、`evaluation/report/review.vue` 已接真实接口（候选模型用 `model/list?status=` 过滤）。
 
 **待办（按业务功能缺口梳理，2026-06-19）**
 
@@ -66,10 +67,10 @@ npm run dev
 
 1. 真实微调训练引擎（最大缺口，建议单独排期）
    - 现为模拟训练（`services/trainer.py` 造假指标）。缺：真实 pipeline（LLaMA-Factory/PEFT 等）、超参真正生效、GPU/资源调度、断点续训、训练完成自动生成 `model_version`、日志/指标来自真实进程。
-2. 模型版本管理写操作（除「改状态」外几乎全缺，且未写审计）
-   - 创建灰度发布 / 扩大流量（`gray.vue`）、全量上线+写 `release_history`（`release.vue`）、快速回滚+写审计（`rollback.vue` 纯前端）、模型导出 / 部署到节点（`deploy.vue`）、归档清理（`archive.vue`）。
-3. 模型效果评估写操作
-   - 生成报告（`report.vue` 占位，缺创建评估任务/报告）、提交人工复核结果（`review.vue` 缺更新 `review_sample`）、错误案例导出（`errors.vue` 占位）。
+2. 模型版本管理写操作（灰度/上线/回滚已完成 ✅，剩余）
+   - 模型导出 / 部署到节点（`deploy.vue` 占位）、归档清理（`archive.vue` 占位）。
+3. 模型效果评估写操作（报告生成、复核提交已完成 ✅，剩余）
+   - 错误案例导出（`errors.vue` 占位）、报告 PDF/Excel 导出（`report.vue` 导出按钮仍占位）。
 4. 数据集管理写操作
    - 脱敏执行（`desensitize.vue` 占位）、标注提交（`annotation.vue`）、版本回滚/新建版本（`version.vue`）、权限保存（`permission.vue` 只有 GET）、真实文件上传（导入仅写元数据）。
 5. 微调任务管理补全
@@ -80,7 +81,7 @@ npm run dev
    - 用户管理 CRUD（仅 4 个种子账号，无增删改密/注册）、**接口层 RBAC 强制**（角色权限目前仅前端展示，后端未按角色拦截，任何登录用户可调所有写接口）、文件存储/下载服务、Token 刷新。
 8. 工程收尾（原 P6 剩余）：Alembic 迁移、Docker compose 一键启动。
 
-**优先级建议**：① 模型上线/回滚/灰度 + 评估报告/复核（打通"评估→上线→回滚"审批闭环，且写入操作日志）→ ② 数据集上传/脱敏/标注 + 配额/调优保存 → ③ 接口层 RBAC + 用户管理 → ④ 真实微调引擎（重，独立排期）。
+**优先级建议**：~~① 模型上线/回滚/灰度 + 评估报告/复核~~（✅ 已完成）→ ② 数据集上传/脱敏/标注 + 配额/调优保存 → ③ 接口层 RBAC + 用户管理 → ④ 真实微调引擎（重，独立排期）。
 
 ## 提交约定
 

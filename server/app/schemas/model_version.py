@@ -56,3 +56,25 @@ class DeployTargetOut(BaseModel):
 
 class StatusIn(BaseModel):
     status: str
+
+
+class GrayReleaseIn(BaseModel):
+    """新建灰度发布入参。modelId 给定时关联具体模型并将其状态置为 gray。"""
+    modelId: int | None = None
+    name: str | None = None
+    scope: str | None = None
+    traffic: int = 10
+
+
+class TrafficIn(BaseModel):
+    traffic: int
+
+
+class ReleaseIn(BaseModel):
+    """全量上线入参。"""
+    note: str | None = None
+
+
+class RollbackIn(BaseModel):
+    """快速回滚入参。"""
+    note: str | None = None

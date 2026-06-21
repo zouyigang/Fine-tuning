@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.response import ok, page
 from app.crud import evaluation as crud
-from app.schemas.evaluation import EvalTaskOut, ReviewSampleOut, ErrorCaseOut, EvalReportOut
+from app.deps import get_current_user
+from app.models.user import User
+from app.schemas.evaluation import (
+    EvalTaskOut, ReviewSampleOut, ErrorCaseOut, EvalReportOut,
+    ReportGenIn, ReviewSubmitIn,
+)
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
@@ -71,3 +76,20 @@ def get_report_list(
 ):
     items, total = crud.list_reports(db, page_no, page_size)
     return ok(page([EvalReportOut.model_validate(x) for x in items], total, page_no, page_size))
+
+
+@router.post("/reports")
+def generate_report(
+    body: ReportGenIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    creator = current.real_name or current.username
+    rep = crud.create_report(db, model=body.model, creator=creator)
+    return ok(EvalReportOut.model_validate(rep))
+
+
+@router.post("/review-results")
+def submit_review_results(body: ReviewSubmitIn, db: Session = Depends(get_db)):
+    updated = crud.submit_review_results(db, [r.model_dump() for r in body.results])
+    return ok({"updated": updated})

@@ -2,6 +2,24 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class ReportGenIn(BaseModel):
+    """生成评估报告入参。"""
+    model: str | None = None
+    modelType: str | None = None
+    sections: list[str] | None = None
+    format: str | None = None
+
+
+class ReviewResultItem(BaseModel):
+    id: int
+    result: str
+
+
+class ReviewSubmitIn(BaseModel):
+    """批量提交人工复核结果。"""
+    results: list[ReviewResultItem] = []
+
+
 class EvalTaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
