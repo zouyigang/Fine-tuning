@@ -18,7 +18,7 @@
               <template #default="{ row }"><span class="mono">{{ row.sample }}</span></template>
             </el-table-column>
             <el-table-column label="启用" width="80">
-              <template #default="{ row }"><el-switch v-model="row.enabled" /></template>
+              <template #default="{ row }"><el-switch v-model="row.enabled" @change="(val) => toggleRule(row, val)" /></template>
             </el-table-column>
           </el-table>
           <el-pagination class="mt-16" background layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="rules.length" v-model:current-page="page" v-model:page-size="pageSize" />
@@ -30,10 +30,8 @@
           <template #header>脱敏执行</template>
           <el-form label-width="90px">
             <el-form-item label="目标数据集">
-              <el-select v-model="targetDataset" placeholder="请选择数据集" style="width: 100%">
-                <el-option label="审讯笔录数据集-2026001" value="1" />
-                <el-option label="资金流水数据集-2026002" value="2" />
-                <el-option label="涉案人员数据集-2026003" value="3" />
+              <el-select v-model="targetDataset" placeholder="请选择数据集" style="width: 100%" filterable>
+                <el-option v-for="d in datasets" :key="d.id" :label="d.name" :value="d.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="应用规则">
@@ -68,9 +66,12 @@ import { ref, computed, onMounted } from 'vue'
 import { Plus, Lock } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getDesensitizeRules } from '@/api/modules/dataset'
+import {
+  getDesensitizeRules, createDesensitizeRule, toggleDesensitizeRule, runDesensitize, getDatasetList
+} from '@/api/modules/dataset'
 
 const rules = ref([])
+const datasets = ref([])
 const targetDataset = ref('')
 const running = ref(false)
 
@@ -81,22 +82,35 @@ const pagedRules = computed(() => rules.value.slice((page.value - 1) * pageSize.
 
 onMounted(async () => {
   rules.value = await getDesensitizeRules()
+  const res = await getDatasetList({ pageSize: 100 })
+  datasets.value = res.list || []
 })
 
 async function addRule() {
   const { value } = await ElMessageBox.prompt('请输入敏感字段名称', '新增脱敏规则', { inputPlaceholder: '如：电子邮箱' }).catch(() => ({}))
   if (value) {
-    rules.value.push({ id: Date.now(), field: value, rule: '自定义掩码', sample: '****', enabled: true })
+    const rule = await createDesensitizeRule({ field: value, rule: '自定义掩码', sample: '****', enabled: true })
+    rules.value.push(rule)
     ElMessage.success('已新增规则')
   }
 }
 
-function run() {
+async function toggleRule(row, val) {
+  try {
+    await toggleDesensitizeRule(row.id, val)
+  } catch (e) {
+    row.enabled = !val // 失败回滚开关状态
+  }
+}
+
+async function run() {
   running.value = true
-  setTimeout(() => {
+  try {
+    const res = await runDesensitize(targetDataset.value)
+    ElMessage.success(`脱敏完成，共处理 ${(res.count || 0).toLocaleString()} 条样本`)
+  } finally {
     running.value = false
-    ElMessage.success('脱敏完成，共处理 12,480 条敏感字段')
-  }, 1500)
+  }
 }
 </script>
 

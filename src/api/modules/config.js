@@ -32,9 +32,19 @@ export function getResourceQuotas() {
   return service.get('/config/resource-quotas')
 }
 
+// 保存部门资源配额（quotas: [{ dept, gpuQuota, maxDuration, maxConcurrent }]）
+export function saveResourceQuotas(quotas = []) {
+  return service.post('/config/resource-quotas', { quotas })
+}
+
 // 自动调优配置
 export function getAutoTuneConfig() {
   return service.get('/config/autotune')
+}
+
+// 保存并启动自动调优（cfg: { enabled, objective, searchAlgo, maxTrials, parallelTrials }）
+export function saveAutoTuneConfig(cfg) {
+  return service.post('/config/autotune', cfg)
 }
 
 // 操作权限配置

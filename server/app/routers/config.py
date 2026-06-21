@@ -7,6 +7,7 @@ from app.core.response import ok, page
 from app.crud import config as crud
 from app.schemas.config import (
     BaseModelOut, BaseModelIn, HyperTemplateOut, HyperTemplateIn, RolePermIn,
+    QuotaSaveIn, AutoTuneIn,
 )
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -59,10 +60,22 @@ def get_resource_quotas(db: Session = Depends(get_db)):
     return ok(crud.resource_quotas(db))
 
 
+@router.post("/resource-quotas")
+def save_resource_quotas(payload: QuotaSaveIn, db: Session = Depends(get_db)):
+    updated = crud.save_resource_quotas(db, [q.model_dump() for q in payload.quotas])
+    return ok({"updated": updated})
+
+
 # ---- 自动调优配置 ----
 @router.get("/autotune")
 def get_autotune_config(db: Session = Depends(get_db)):
     return ok(crud.autotune_config(db))
+
+
+@router.post("/autotune")
+def save_autotune_config(payload: AutoTuneIn, db: Session = Depends(get_db)):
+    crud.save_autotune_config(db, payload.model_dump(exclude_none=True))
+    return ok({"success": True})
 
 
 # ---- 操作权限配置 ----

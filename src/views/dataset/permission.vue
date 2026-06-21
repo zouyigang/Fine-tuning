@@ -58,7 +58,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { ROLES } from '@/utils/dict'
-import { getDatasetPermissions } from '@/api/modules/dataset'
+import { getDatasetPermissions, saveDatasetPermissions } from '@/api/modules/dataset'
 
 const loading = ref(false)
 const list = ref([])
@@ -74,7 +74,12 @@ async function load() {
   total.value = res.total
   loading.value = false
 }
-function save() {
+async function save() {
+  await saveDatasetPermissions(
+    list.value.map((r) => ({
+      id: r.id, roles: r.roles, canView: r.canView, canEdit: r.canEdit, canExport: r.canExport
+    }))
+  )
   ElMessage.success('权限变更已保存')
 }
 function showAudit(row) {

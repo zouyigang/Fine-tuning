@@ -32,6 +32,7 @@ class DatasetCreate(BaseModel):
 class VersionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: int
     version: str
     desc: str | None = None
     author: str | None = None
@@ -74,3 +75,34 @@ class PermissionOut(BaseModel):
     canView: bool | None = True
     canEdit: bool | None = False
     canExport: bool | None = False
+
+
+class PermissionSaveItem(BaseModel):
+    id: int
+    roles: list[str] | None = None
+    canView: bool | None = True
+    canEdit: bool | None = False
+    canExport: bool | None = False
+
+
+class PermissionSaveIn(BaseModel):
+    items: list[PermissionSaveItem] = []
+
+
+class RuleCreateIn(BaseModel):
+    field: str
+    rule: str | None = "自定义掩码"
+    sample: str | None = "****"
+    enabled: bool | None = True
+
+
+class RuleToggleIn(BaseModel):
+    enabled: bool
+
+
+class DesensitizeRunIn(BaseModel):
+    datasetId: int
+
+
+class AnnotationProgressIn(BaseModel):
+    done: int

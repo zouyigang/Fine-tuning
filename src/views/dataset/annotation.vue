@@ -67,9 +67,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { Plus, ArrowLeft, ArrowRight, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getAnnotationTasks } from '@/api/modules/dataset'
-
-const submit = () => ElMessage.success('已提交，进入下一条')
+import { getAnnotationTasks, updateAnnotationProgress } from '@/api/modules/dataset'
 
 const loading = ref(false)
 const list = ref([])
@@ -97,6 +95,18 @@ async function load() {
   list.value = res.list
   total.value = res.total
   loading.value = false
+}
+// 提交标注：把所选任务进度推进一步并落库（未选任务则提示先选）
+async function submit() {
+  if (!active.value) {
+    ElMessage.warning('请先在左侧选择要提交的标注任务')
+    return
+  }
+  const next = Math.min(100, (active.value.done || 0) + 10)
+  await updateAnnotationProgress(active.value.id, next)
+  ElMessage.success(`已提交，「${active.value.title}」进度更新为 ${next}%`)
+  await load()
+  active.value = list.value.find((t) => t.id === active.value.id) || null
 }
 onMounted(load)
 </script>

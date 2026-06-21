@@ -13,6 +13,12 @@ _RULES = [
     ("PUT", r"^/api/task/\d+/status$", "微调任务", "变更任务状态"),
     ("POST", r"^/api/dataset$", "数据集管理", "创建数据集"),
     ("DELETE", r"^/api/dataset/\d+$", "数据集管理", "删除数据集"),
+    ("POST", r"^/api/dataset/desensitize-rules$", "数据集管理", "新增脱敏规则"),
+    ("PUT", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "切换脱敏规则"),
+    ("POST", r"^/api/dataset/desensitize/run$", "数据集管理", "执行数据脱敏"),
+    ("POST", r"^/api/dataset/versions/\d+/rollback$", "数据集管理", "数据集版本回滚"),
+    ("PUT", r"^/api/dataset/annotation-tasks/\d+/progress$", "数据集管理", "提交标注进度"),
+    ("POST", r"^/api/dataset/permissions$", "数据集管理", "保存数据集权限"),
     ("PUT", r"^/api/model/\d+/status$", "模型版本", "变更模型状态"),
     ("POST", r"^/api/model/gray-releases$", "模型版本", "创建灰度发布"),
     ("PUT", r"^/api/model/gray-releases/\d+/traffic$", "模型版本", "调整灰度流量"),
@@ -24,6 +30,8 @@ _RULES = [
     ("POST", r"^/api/config/hyper-templates$", "微调配置", "保存超参模板"),
     ("DELETE", r"^/api/config/hyper-templates/\d+$", "微调配置", "删除超参模板"),
     ("POST", r"^/api/config/role-permissions$", "微调配置", "保存角色权限"),
+    ("POST", r"^/api/config/resource-quotas$", "微调配置", "保存资源配额"),
+    ("POST", r"^/api/config/autotune$", "微调配置", "保存自动调优配置"),
     ("POST", r"^/api/auth/logout$", "系统", "退出登录"),
 ]
 

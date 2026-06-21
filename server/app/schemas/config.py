@@ -52,3 +52,22 @@ class HyperTemplateIn(BaseModel):
 
 class RolePermIn(BaseModel):
     roles: list[dict] | None = None
+
+
+class QuotaItemIn(BaseModel):
+    dept: str
+    gpuQuota: int | None = 0
+    maxDuration: int | None = 0
+    maxConcurrent: int | None = 1
+
+
+class QuotaSaveIn(BaseModel):
+    quotas: list[QuotaItemIn] = []
+
+
+class AutoTuneIn(BaseModel):
+    enabled: bool | None = True
+    objective: str | None = None
+    searchAlgo: str | None = None
+    maxTrials: int | None = 30
+    parallelTrials: int | None = 4

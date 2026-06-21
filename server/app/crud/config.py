@@ -75,7 +75,37 @@ def resource_quotas(db: Session) -> dict:
     return {"cluster": cluster, "quotas": quotas}
 
 
+def save_resource_quotas(db: Session, quotas: list[dict]) -> int:
+    """按部门更新配额（gpuUsed 为实时占用，不在此保存）。返回更新条数。"""
+    updated = 0
+    for item in quotas:
+        q = db.scalars(select(ResourceQuota).where(ResourceQuota.dept == item.get("dept"))).first()
+        if not q:
+            continue
+        if item.get("gpuQuota") is not None:
+            q.gpuQuota = item["gpuQuota"]
+        if item.get("maxDuration") is not None:
+            q.maxDuration = item["maxDuration"]
+        if item.get("maxConcurrent") is not None:
+            q.maxConcurrent = item["maxConcurrent"]
+        updated += 1
+    db.commit()
+    return updated
+
+
 # ---- 自动调优配置 ----
+def save_autotune_config(db: Session, payload: dict):
+    """保存自动调优配置（单行，无则创建）。searchSpace 不在此覆盖。"""
+    cfg = db.scalars(select(AutoTuneConfig).limit(1)).first()
+    if not cfg:
+        cfg = AutoTuneConfig()
+        db.add(cfg)
+    for k in ("enabled", "objective", "searchAlgo", "maxTrials", "parallelTrials"):
+        if payload.get(k) is not None:
+            setattr(cfg, k, payload[k])
+    db.commit()
+
+
 def autotune_config(db: Session) -> dict:
     cfg = db.scalars(select(AutoTuneConfig).limit(1)).first()
     trials = [

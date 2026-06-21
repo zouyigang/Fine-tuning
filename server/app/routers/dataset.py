@@ -15,6 +15,11 @@ from app.schemas.dataset import (
     RuleOut,
     AnnotationOut,
     PermissionOut,
+    PermissionSaveIn,
+    RuleCreateIn,
+    RuleToggleIn,
+    DesensitizeRunIn,
+    AnnotationProgressIn,
 )
 
 router = APIRouter(prefix="/dataset", tags=["dataset"])
@@ -68,6 +73,47 @@ def get_dataset_permissions(
 ):
     items, total = crud.list_permissions(db, page_no, page_size)
     return ok(page([PermissionOut.model_validate(x) for x in items], total, page_no, page_size))
+
+
+@router.post("/desensitize-rules")
+def create_desensitize_rule(payload: RuleCreateIn, db: Session = Depends(get_db)):
+    rule = crud.create_rule(db, payload.model_dump(exclude_none=True))
+    return ok(RuleOut.model_validate(rule))
+
+
+@router.put("/desensitize-rules/{rule_id}")
+def toggle_desensitize_rule(rule_id: int, body: RuleToggleIn, db: Session = Depends(get_db)):
+    if not crud.toggle_rule(db, rule_id, body.enabled):
+        return err("脱敏规则不存在", code=4004)
+    return ok({"success": True})
+
+
+@router.post("/desensitize/run")
+def run_desensitize(body: DesensitizeRunIn, db: Session = Depends(get_db)):
+    ok_flag, count = crud.run_desensitize(db, body.datasetId)
+    if not ok_flag:
+        return err("数据集不存在", code=4004)
+    return ok({"success": True, "count": count})
+
+
+@router.post("/versions/{version_id}/rollback")
+def rollback_version(version_id: int, db: Session = Depends(get_db)):
+    if not crud.rollback_version(db, version_id):
+        return err("版本不存在", code=4004)
+    return ok({"success": True})
+
+
+@router.put("/annotation-tasks/{task_id}/progress")
+def update_annotation_progress(task_id: int, body: AnnotationProgressIn, db: Session = Depends(get_db)):
+    if not crud.update_annotation_progress(db, task_id, body.done):
+        return err("标注任务不存在", code=4004)
+    return ok({"success": True})
+
+
+@router.post("/permissions")
+def save_permissions(payload: PermissionSaveIn, db: Session = Depends(get_db)):
+    updated = crud.save_permissions(db, [i.model_dump() for i in payload.items])
+    return ok({"updated": updated})
 
 
 @router.get("/{ds_id}")

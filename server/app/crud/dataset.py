@@ -62,6 +62,63 @@ def get_rules(db: Session):
     return db.scalars(select(DesensitizeRule).order_by(DesensitizeRule.id)).all()
 
 
+def create_rule(db: Session, payload: dict) -> DesensitizeRule:
+    rule = DesensitizeRule(**payload)
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+def toggle_rule(db: Session, rule_id: int, enabled: bool) -> bool:
+    r = db.get(DesensitizeRule, rule_id)
+    if not r:
+        return False
+    r.enabled = enabled
+    db.commit()
+    return True
+
+
+def run_desensitize(db: Session, dataset_id: int):
+    """执行脱敏：将目标数据集标记为已脱敏，返回 (是否成功, 处理样本量)。"""
+    ds = db.get(Dataset, dataset_id)
+    if not ds:
+        return False, 0
+    ds.desensitized = True
+    db.commit()
+    return True, (ds.total or 0)
+
+
+def rollback_version(db: Session, version_id: int) -> bool:
+    """版本回滚：把目标版本置为当前版本，同数据集其余版本取消当前标记。"""
+    v = db.get(DatasetVersion, version_id)
+    if not v:
+        return False
+    others = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.dataset_id == v.dataset_id)
+    ).all()
+    for o in others:
+        o.current = (o.id == version_id)
+    # 同步数据集主表当前版本号
+    ds = db.get(Dataset, v.dataset_id)
+    if ds:
+        ds.version = v.version
+    db.commit()
+    return True
+
+
+def update_annotation_progress(db: Session, task_id: int, done: int) -> bool:
+    """更新标注任务进度；满 100% 自动转「待审核」。"""
+    t = db.get(AnnotationTask, task_id)
+    if not t:
+        return False
+    t.done = max(0, min(100, done))
+    if t.done >= 100 and t.status not in ("已完成", "待审核"):
+        t.status = "待审核"
+    db.commit()
+    return True
+
+
 def list_annotations(db: Session, page: int = 1, page_size: int = 10):
     stmt = select(AnnotationTask)
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
@@ -74,6 +131,22 @@ def list_permissions(db: Session, page: int = 1, page_size: int = 10):
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     stmt = stmt.order_by(DatasetPermission.id).offset((page - 1) * page_size).limit(page_size)
     return db.scalars(stmt).all(), total
+
+
+def save_permissions(db: Session, items: list[dict]) -> int:
+    """批量保存数据集权限（按 id 更新角色与查看/编辑/导出开关）。返回更新条数。"""
+    updated = 0
+    for item in items:
+        p = db.get(DatasetPermission, item.get("id"))
+        if not p:
+            continue
+        p.roles = item.get("roles") or []
+        p.canView = bool(item.get("canView"))
+        p.canEdit = bool(item.get("canEdit"))
+        p.canExport = bool(item.get("canExport"))
+        updated += 1
+    db.commit()
+    return updated
 
 
 def get_statistics(db: Session, dataset_id: int | None):

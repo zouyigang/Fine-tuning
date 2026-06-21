@@ -61,7 +61,7 @@ import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
-import { getResourceQuotas } from '@/api/modules/config'
+import { getResourceQuotas, saveResourceQuotas } from '@/api/modules/config'
 
 const data = reactive({ cluster: null, quotas: [] })
 
@@ -92,8 +92,14 @@ function gauge(title, value, color) {
 const gpuGauge = computed(() => gauge('GPU 使用率', data.cluster ? Math.round((data.cluster.usedGpu / data.cluster.totalGpu) * 100) : 0, '#2f54eb'))
 const cpuGauge = computed(() => gauge('CPU 使用率', data.cluster ? Math.round((data.cluster.usedCpu / data.cluster.totalCpu) * 100) : 0, '#13c2c2'))
 
-function save() {
+async function save() {
+  await saveResourceQuotas(
+    data.quotas.map((q) => ({
+      dept: q.dept, gpuQuota: q.gpuQuota, maxDuration: q.maxDuration, maxConcurrent: q.maxConcurrent
+    }))
+  )
   ElMessage.success('资源配额已保存')
+  Object.assign(data, await getResourceQuotas())
 }
 onMounted(async () => Object.assign(data, await getResourceQuotas()))
 </script>

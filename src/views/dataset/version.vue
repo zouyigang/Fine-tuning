@@ -74,7 +74,7 @@ import { ref, onMounted } from 'vue'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getDatasetVersions } from '@/api/modules/dataset'
+import { getDatasetVersions, rollbackDatasetVersion } from '@/api/modules/dataset'
 
 const datasetId = ref(1)
 const versions = ref([])
@@ -86,8 +86,9 @@ async function load() {
 }
 async function rollback(v) {
   await ElMessageBox.confirm(`确认将数据集回滚至 ${v.version}？当前版本将保留为历史版本。`, '版本回滚', { type: 'warning' })
+  await rollbackDatasetVersion(v.id)
   ElMessage.success(`已回滚至 ${v.version}`)
-  versions.value.forEach((x) => (x.current = x.version === v.version))
+  await load()
 }
 onMounted(load)
 </script>

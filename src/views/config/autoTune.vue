@@ -81,7 +81,7 @@ import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
-import { getAutoTuneConfig } from '@/api/modules/config'
+import { getAutoTuneConfig, saveAutoTuneConfig } from '@/api/modules/config'
 
 const cfg = reactive({ enabled: true, objective: '', searchAlgo: '', maxTrials: 30, parallelTrials: 4, searchSpace: [], trials: [] })
 const bestF1 = computed(() => (cfg.trials.length ? Math.max(...cfg.trials.map((t) => t.f1)) : 0))
@@ -106,7 +106,11 @@ const trialChart = computed(() => ({
   ]
 }))
 
-function save() {
+async function save() {
+  await saveAutoTuneConfig({
+    enabled: cfg.enabled, objective: cfg.objective, searchAlgo: cfg.searchAlgo,
+    maxTrials: cfg.maxTrials, parallelTrials: cfg.parallelTrials
+  })
   ElMessage.success('自动调优配置已保存，调优任务已启动')
 }
 onMounted(async () => Object.assign(cfg, await getAutoTuneConfig()))

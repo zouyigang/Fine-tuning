@@ -26,12 +26,37 @@ export function getDesensitizeRules() {
   return service.get('/dataset/desensitize-rules')
 }
 
+// 新增脱敏规则
+export function createDesensitizeRule(payload) {
+  return service.post('/dataset/desensitize-rules', payload)
+}
+
+// 启用/停用脱敏规则
+export function toggleDesensitizeRule(id, enabled) {
+  return service.put(`/dataset/desensitize-rules/${id}`, { enabled })
+}
+
+// 执行脱敏（标记目标数据集已脱敏）
+export function runDesensitize(datasetId) {
+  return service.post('/dataset/desensitize/run', { datasetId })
+}
+
 export function getAnnotationTasks(params = {}) {
   return service.get('/dataset/annotation-tasks', { params })
 }
 
+// 提交标注进度
+export function updateAnnotationProgress(taskId, done) {
+  return service.put(`/dataset/annotation-tasks/${taskId}/progress`, { done })
+}
+
 export function getDatasetVersions(datasetId) {
   return service.get('/dataset/versions', { params: { datasetId } })
+}
+
+// 数据集版本回滚（置为当前版本）
+export function rollbackDatasetVersion(versionId) {
+  return service.post(`/dataset/versions/${versionId}/rollback`)
 }
 
 export function getDatasetStatistics(datasetId) {
@@ -40,4 +65,9 @@ export function getDatasetStatistics(datasetId) {
 
 export function getDatasetPermissions(params = {}) {
   return service.get('/dataset/permissions', { params })
+}
+
+// 批量保存数据集权限（items: [{ id, roles, canView, canEdit, canExport }]）
+export function saveDatasetPermissions(items = []) {
+  return service.post('/dataset/permissions', { items })
 }
