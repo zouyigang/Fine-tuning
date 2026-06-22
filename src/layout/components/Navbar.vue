@@ -13,6 +13,10 @@
     </div>
 
     <div class="right">
+      <el-button class="screen-entry" type="primary" size="small" @click="openScreen">
+        <el-icon><DataBoard /></el-icon>
+        <span>数据大屏</span>
+      </el-button>
       <el-tooltip content="全屏" placement="bottom">
         <el-icon class="action-icon" @click="toggleFullscreen"><FullScreen /></el-icon>
       </el-tooltip>
@@ -66,6 +70,11 @@ const breadcrumbs = computed(() =>
     .map((r) => ({ path: r.path, title: r.meta.title }))
 )
 
+// 大屏在新标签页打开，独占整屏，不影响当前工作流
+function openScreen() {
+  window.open(router.resolve('/screen').href, '_blank')
+}
+
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen()
@@ -114,6 +123,12 @@ function toggleFullscreen() {
   &:hover {
     color: $primary-color;
   }
+}
+
+.screen-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .user-info {
