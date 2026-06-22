@@ -2,9 +2,10 @@
 
 注意：具体路径（/list、/versions 等）声明在 /{ds_id} 之前，避免被动态路由吞掉。
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, File, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core import storage
 from app.core.database import get_db
 from app.core.response import ok, err, page
 from app.crud import dataset as crud
@@ -20,7 +21,12 @@ from app.schemas.dataset import (
     RuleToggleIn,
     DesensitizeRunIn,
     AnnotationProgressIn,
+    UploadOut,
 )
+
+# 允许的上传文件后缀与大小上限（与前端提示一致：单文件 ≤ 500MB）
+_ALLOWED_EXT = (".json", ".jsonl", ".csv", ".txt")
+_MAX_SIZE = 500 * 1024 * 1024
 
 router = APIRouter(prefix="/dataset", tags=["dataset"])
 
@@ -73,6 +79,26 @@ def get_dataset_permissions(
 ):
     items, total = crud.list_permissions(db, page_no, page_size)
     return ok(page([PermissionOut.model_validate(x) for x in items], total, page_no, page_size))
+
+
+@router.post("/upload")
+async def upload_dataset_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """本地上传数据集文件：落盘 + 估算样本量，返回 fileId 供创建数据集关联。"""
+    name = file.filename or "file"
+    if not name.lower().endswith(_ALLOWED_EXT):
+        return err("仅支持 JSON / JSONL / CSV / TXT 文件", code=4001)
+    data = await file.read()
+    if len(data) > _MAX_SIZE:
+        return err("单文件不能超过 500MB", code=4001)
+    if not data:
+        return err("文件内容为空", code=4001)
+    stored, abspath, size = storage.save_bytes("datasets", name, data)
+    rows = storage.count_rows(abspath)
+    rec = crud.save_dataset_file(db, file_name=name, stored_name=stored, size=size, rows=rows)
+    return ok(UploadOut(
+        fileId=rec.id, fileName=name, size=size,
+        sizeText=storage.human_size(size), rows=rows,
+    ))
 
 
 @router.post("/desensitize-rules")

@@ -15,7 +15,99 @@
 | HTTP | Axios（已封装拦截器，预留后端对接） |
 | 样式 | SCSS |
 
-## 快速开始（前后端联调）
+## 🚀 一键启动（Docker，推荐）
+
+> 从 git 把代码拉下来后，**无需在本机安装 MySQL / Node / Python**，一条命令即可起全套服务（MySQL + 后端 + 前端）。整个过程由 `docker-compose.yml` 编排，数据库自动建表、灌种子、创建默认账号。
+
+### 0. 前置条件
+
+- 安装并**启动** [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Windows / macOS 都可）。
+  - 验证：终端执行 `docker version`，能看到 `Server` 版本号即代表 Docker 守护进程已运行（只显示 Client 说明 Docker Desktop 没启动，先把它打开等托盘图标变绿）。
+  - 验证 compose：`docker compose version` 能输出版本号。
+- 占用端口：**5180**（前端）、**8000**（后端）、**3307**（MySQL，宿主侧）。确保这三个端口没被别的程序占用。
+  - MySQL 容器宿主端口特意用 3307（容器内部仍是 3306），就是为了**避开本机已装的 MySQL（3306）**，两者可共存、互不影响。
+
+### 1. 拉取代码
+
+```bash
+git clone <仓库地址> Fine-tuning
+cd Fine-tuning
+```
+
+### 2.（可选）设置环境变量
+
+不设置则用内置默认值，可直接跳到第 3 步。如需自定义，在**仓库根目录**新建 `.env`（该文件不会被提交）：
+
+```dotenv
+# MySQL root 密码（默认 root1234）
+MYSQL_ROOT_PASSWORD=root1234
+# 生产环境务必改成你自己的随机串
+JWT_SECRET=please-change-me-in-prod
+```
+
+> 这些变量由 `docker compose` 注入容器，和本地 `server/.env` 互不干扰。
+
+### 3. 构建并启动
+
+在**仓库根目录**执行：
+
+```bash
+docker compose up -d --build
+```
+
+- 首次会拉取基础镜像（mysql:8.4 / python:3.11-slim / node:20-alpine / nginx:alpine）并构建前后端镜像，需几分钟，请耐心等待。
+- `-d` 后台运行，`--build` 表示构建镜像（首次或改了代码后都要带）。
+- 国内网络：构建已默认走国内镜像源（后端 pip 用清华源、前端 npm 用 npmmirror，写在各自 Dockerfile）。**境外**环境可把 Dockerfile 里对应的镜像源那行按注释删掉换回官方源。
+
+### 4. 确认服务就绪
+
+```bash
+docker compose ps          # 三个容器都应是 Up；mysql 显示 (healthy)
+docker compose logs -f backend   # 跟踪后端日志，看到 alembic 迁移完成 + Uvicorn 启动即 OK（Ctrl+C 退出日志查看，不影响容器）
+```
+
+启动编排是自动的：**mysql 健康检查通过 → 才启动 backend（容器内先跑 `alembic upgrade head` 建表，再 `AUTO_SEED` 灌种子）→ 再起 frontend（nginx）**。
+
+健康检查：浏览器或 curl 访问 http://localhost:8000/api/health ，返回 `{"code":0,...,"status":"up"}` 即后端就绪。
+
+### 5. 访问系统
+
+- **前端入口**：http://localhost:5180
+- **后端接口文档**：http://localhost:8000/docs
+- 默认账号见下方[「访问地址与登录账号」](#访问地址与登录账号)（`admin / admin123`）。
+
+### 常用运维命令
+
+```bash
+docker compose logs -f backend     # 看后端日志（frontend / mysql 同理）
+docker compose restart backend     # 重启某个服务
+docker compose up -d --build backend   # 只重建并重启后端（改了后端代码后）
+docker compose up -d --build frontend  # 只重建并重启前端（改了前端代码后）
+docker compose stop                # 停止全部容器（保留数据）
+docker compose start               # 再次启动已停止的容器
+docker compose down                # 停止并删除容器（数据卷保留，下次起来数据还在）
+docker compose down -v             # ⚠️ 连数据库 / 上传文件数据卷一起删除（彻底重置，慎用）
+```
+
+### 数据持久化
+
+- `mysql_data` 卷：数据库数据（库 `fine_tuning`）。
+- `storage_data` 卷：数据集上传、模型导出、报告导出等文件（容器内 `/data/storage`）。
+- `docker compose down` 不会删卷，数据保留；只有 `down -v` 才会清空。
+
+### 常见问题排查
+
+| 现象 | 原因 / 解决 |
+| --- | --- |
+| `docker version` 只显示 Client，没有 Server | Docker Desktop 没启动，打开它等托盘变绿再试 |
+| 拉镜像报 `... : EOF` 或超时 | Docker Hub 网络瞬断，**重试** `docker compose up -d --build` 即可；或先手动 `docker pull mysql:8.4` 等逐个预拉再构建 |
+| 端口被占用 `bind: address already in use` | 5180 / 8000 / 3307 被占用，先关掉占用进程，或改 `docker-compose.yml` 里 `ports` 的宿主端口 |
+| backend 容器反复退出 | `docker compose logs backend` 看报错；多为连不上 mysql（等它 healthy）或环境变量问题 |
+| 改了代码不生效 | 必须带 `--build` 重建镜像：`docker compose up -d --build backend`（或 `frontend`） |
+
+---
+
+## 快速开始（本地开发联调，不用 Docker）
 
 > 启动顺序：**① MySQL → ② 后端 → ③ 前端**。前端通过 vite 代理把 `/api` 转发到后端 `:8000`。
 
@@ -108,4 +200,4 @@ src/
 - `vite.config.js` 的 `server.proxy` 已把 `/api` 代理到 `http://localhost:8000`。
 - `src/api/request.js` 统一处理 `{ code, data, message }` 响应结构与 token 注入；`code:401` 自动登出跳登录页。
 
-进度：P0 脚手架 → P1 建表+种子 → P2 鉴权 → P3 数据集 → P4 任务+模拟训练 → P5 评估/版本/配置 → 工作台总览对接，均已完成；P6（Alembic、操作日志、Docker）待办。
+进度：P0 脚手架 → P1 建表+种子 → P2 鉴权 → P3 数据集 → P4 任务+模拟训练 → P5 评估/版本/配置 → 工作台总览对接 → P6（操作日志审计、接口层 RBAC + 用户管理）→ 收尾批次（数据集真实上传、模型导出/部署/归档、报告 PDF/Excel 导出、批量调度持久化、Alembic 迁移、Docker 一键部署），均已完成。剩余：真实微调训练引擎（独立排期）。

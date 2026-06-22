@@ -58,6 +58,18 @@ def list_reports(db: Session, page: int = 1, page_size: int = 10):
     return _paginate(db, stmt, page, page_size)
 
 
+def get_report(db: Session, report_id: int) -> EvalReport | None:
+    return db.get(EvalReport, report_id)
+
+
+def all_error_cases(db: Session, error_type: str = ""):
+    """导出用：返回全部错误案例（不分页）。"""
+    stmt = select(ErrorCase)
+    if error_type:
+        stmt = stmt.where(ErrorCase.errorType == error_type)
+    return db.scalars(stmt.order_by(ErrorCase.id)).all()
+
+
 def create_report(db: Session, *, model: str, creator: str,
                   conclusion: str = "建议优化后上线", f1: float | None = None):
     """生成一份评估报告并落库。f1 未给时按经验区间生成。"""

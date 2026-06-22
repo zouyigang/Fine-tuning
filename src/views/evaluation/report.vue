@@ -22,8 +22,8 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="preview(row)">预览</el-button>
-            <el-button link type="primary" size="small">导出 PDF</el-button>
-            <el-button link type="primary" size="small">导出 Excel</el-button>
+            <el-button link type="primary" size="small" @click="doExport(row, 'pdf')">导出 PDF</el-button>
+            <el-button link type="primary" size="small" @click="doExport(row, 'excel')">导出 Excel</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -84,7 +84,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getReportList, generateReport } from '@/api/modules/evaluation'
+import { getReportList, generateReport, exportReport } from '@/api/modules/evaluation'
 import { getModelList } from '@/api/modules/model'
 
 const loading = ref(false)
@@ -128,6 +128,10 @@ async function generate() {
 function preview(row) {
   current.value = row
   previewDrawer.value = true
+}
+async function doExport(row, format) {
+  await exportReport(row.id, format)
+  ElMessage.success(`已导出 ${format === 'excel' ? 'Excel' : 'PDF'} 报告`)
 }
 onMounted(async () => {
   await load()

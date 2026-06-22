@@ -30,8 +30,8 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small">恢复</el-button>
-            <el-button link type="primary" size="small">下载</el-button>
+            <el-button link type="primary" size="small" @click="restore(row)">恢复</el-button>
+            <el-button link type="primary" size="small" @click="download(row)">下载</el-button>
             <el-button link type="danger" size="small" :disabled="row.permanent" @click="clean(row)">清理</el-button>
           </template>
         </el-table-column>
@@ -47,7 +47,7 @@ import { Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
-import { getArchiveList } from '@/api/modules/model'
+import { getArchiveList, cleanArchive, batchCleanArchive, restoreArchive, downloadModel } from '@/api/modules/model'
 
 const loading = ref(false)
 const list = ref([])
@@ -64,13 +64,25 @@ async function load() {
 }
 async function clean(row) {
   await ElMessageBox.confirm(`确认清理 ${row.name} ${row.version}？清理后不可恢复。`, '清理模型', { type: 'warning' })
+  await cleanArchive(row.id)
   ElMessage.success('已清理，释放存储空间')
   load()
 }
 async function batchClean() {
   await ElMessageBox.confirm(`确认批量清理 ${selection.value.length} 个模型版本？`, '批量清理', { type: 'warning' })
-  ElMessage.success('批量清理完成')
+  const res = await batchCleanArchive(selection.value.map((r) => r.id))
+  ElMessage.success(`批量清理完成，共清理 ${res.cleaned} 个`)
   load()
+}
+async function restore(row) {
+  await ElMessageBox.confirm(`确认恢复 ${row.name} ${row.version}？恢复后状态置为「已下线」。`, '恢复模型', { type: 'info' })
+  await restoreArchive(row.id)
+  ElMessage.success('已恢复')
+  load()
+}
+async function download(row) {
+  await downloadModel(row.id)
+  ElMessage.success('开始下载模型产物')
 }
 onMounted(load)
 </script>

@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 720
     CORS_ORIGINS: str = "http://localhost:5180"
     AUTO_SEED: bool = True
+    # 文件存储根目录（数据集上传 / 模型导出 / 报告导出落盘）
+    STORAGE_DIR: str = "./storage"
 
     @property
     def cors_origin_list(self) -> list[str]:

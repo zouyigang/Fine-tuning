@@ -42,3 +42,18 @@ export function getTaskLogs(params = {}) {
 export function getScheduleQueue() {
   return service.get('/task/schedule')
 }
+
+// 新建批量调度项（payload: { name, priority, gpu, scheduledAt }）
+export function createScheduleItem(payload) {
+  return service.post('/task/schedule', payload)
+}
+
+// 移除调度项
+export function removeScheduleItem(id) {
+  return service.delete(`/task/schedule/${id}`)
+}
+
+// 重排调度顺序（ids: 调度项 id 的目标顺序）
+export function reorderSchedule(ids) {
+  return service.put('/task/schedule/reorder', { ids })
+}

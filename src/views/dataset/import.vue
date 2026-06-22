@@ -86,10 +86,20 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="form.source === 'upload'" label="上传文件">
-          <el-upload drag :auto-upload="false" multiple style="width: 100%">
+          <el-upload
+            ref="uploadRef"
+            drag
+            :auto-upload="false"
+            :limit="1"
+            :on-change="onFileChange"
+            :on-exceed="onExceed"
+            :on-remove="onFileRemove"
+            accept=".json,.jsonl,.csv,.txt"
+            style="width: 100%"
+          >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">拖拽文件到此处，或<em>点击上传</em></div>
-            <template #tip><div class="el-upload__tip">支持 JSON / JSONL / CSV / TXT，单文件不超过 500MB</div></template>
+            <template #tip><div class="el-upload__tip">支持 JSON / JSONL / CSV / TXT，单文件不超过 500MB；样本量按文件内容自动统计</div></template>
           </el-upload>
         </el-form-item>
         <el-form-item v-else label="选择来源数据">
@@ -115,7 +125,7 @@ import { Search, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { DATA_TYPES, DEPARTMENTS } from '@/utils/dict'
-import { getDatasetList, createDataset, deleteDataset } from '@/api/modules/dataset'
+import { getDatasetList, createDataset, deleteDataset, uploadDatasetFile } from '@/api/modules/dataset'
 
 const loading = ref(false)
 const list = ref([])
@@ -125,6 +135,8 @@ const query = reactive({ keyword: '', type: '', page: 1, pageSize: 10 })
 const dialog = ref(false)
 const submitting = ref(false)
 const formRef = ref()
+const uploadRef = ref()
+const selectedFile = ref(null)
 const form = reactive({ source: 'ocr', name: '', type: '', dept: '', desensitize: true })
 const rules = {
   name: [{ required: true, message: '请输入数据集名称', trigger: 'blur' }],
@@ -151,14 +163,53 @@ async function remove(row) {
   ElMessage.success('删除成功')
   load()
 }
+function onFileChange(file) {
+  selectedFile.value = file.raw
+}
+function onFileRemove() {
+  selectedFile.value = null
+}
+// el-upload 限制单文件：超出时用新文件替换旧文件
+function onExceed(files) {
+  uploadRef.value.clearFiles()
+  const f = files[0]
+  f.uid = Date.now()
+  uploadRef.value.handleStart(f)
+  selectedFile.value = f
+}
+
 async function submit() {
   await formRef.value.validate()
+  if (form.source === 'upload' && !selectedFile.value) {
+    ElMessage.warning('请先选择要上传的文件')
+    return
+  }
   submitting.value = true
-  await createDataset({ name: form.name, type: form.type, dept: form.dept, total: randomCount.value, desensitized: form.desensitize, owner: '张三', updatedAt: '2026-06-09 10:00' })
-  submitting.value = false
-  dialog.value = false
-  ElMessage.success('导入成功')
-  load()
+  try {
+    const payload = { name: form.name, type: form.type, dept: form.dept, desensitized: form.desensitize, owner: '张三', updatedAt: now() }
+    if (form.source === 'upload') {
+      // 真实上传：先落盘统计样本量，再以 fileId 关联创建数据集
+      const up = await uploadDatasetFile(selectedFile.value)
+      payload.fileId = up.fileId
+      payload.total = up.rows
+    } else {
+      payload.total = randomCount.value
+    }
+    await createDataset(payload)
+    dialog.value = false
+    selectedFile.value = null
+    uploadRef.value?.clearFiles()
+    ElMessage.success('导入成功')
+    load()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function now() {
+  const d = new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 onMounted(load)

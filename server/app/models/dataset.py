@@ -78,3 +78,16 @@ class DatasetPermission(Base):
     canView = Column("can_view", Boolean, default=True)
     canEdit = Column("can_edit", Boolean, default=False)
     canExport = Column("can_export", Boolean, default=False)
+
+
+class DatasetFile(Base):
+    """数据集上传的原始文件记录（物理文件存于 storage/datasets/）。"""
+    __tablename__ = "dataset_file"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(Integer, index=True)  # 上传时为空，创建数据集后回填
+    fileName = Column("file_name", String(255))   # 用户原始文件名
+    storedName = Column("stored_name", String(255))  # 磁盘存储名
+    size = Column(Integer, default=0)             # 字节数
+    rows = Column(Integer, default=0)             # 估算样本量
+    uploadedAt = Column("uploaded_at", String(32))

@@ -18,6 +18,13 @@ export function createDataset(payload) {
   return service.post('/dataset', payload)
 }
 
+// 本地上传数据集文件（multipart），返回 { fileId, fileName, size, sizeText, rows }
+export function uploadDatasetFile(file) {
+  const data = new FormData()
+  data.append('file', file)
+  return service.post('/dataset/upload', data, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+
 export function deleteDataset(id) {
   return service.delete(`/dataset/${id}`)
 }

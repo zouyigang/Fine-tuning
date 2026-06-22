@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.response import ok, err, page
 from app.crud import task as crud
-from app.schemas.task import TaskOut, TaskCreate, StatusIn
+from app.schemas.task import TaskOut, TaskCreate, StatusIn, ScheduleCreateIn, ScheduleReorderIn
 
 router = APIRouter(prefix="/task", tags=["task"])
 
@@ -63,14 +63,26 @@ def get_task_logs(
 
 @router.get("/schedule")
 def get_schedule_queue(db: Session = Depends(get_db)):
-    items = crud.schedule_queue(db)
-    out = []
-    for i, t in enumerate(items):
-        d = TaskOut.model_validate(t).model_dump()
-        d["order"] = i + 1
-        d["scheduledAt"] = "立即执行" if i < 2 else f"2026-06-09 0{i}:00"
-        out.append(d)
-    return ok(out)
+    return ok(crud.schedule_queue(db))
+
+
+@router.post("/schedule")
+def create_schedule_item(payload: ScheduleCreateIn, db: Session = Depends(get_db)):
+    item = crud.create_schedule_item(db, payload.model_dump(exclude_none=True))
+    return ok({"id": item.id})
+
+
+@router.put("/schedule/reorder")
+def reorder_schedule(body: ScheduleReorderIn, db: Session = Depends(get_db)):
+    updated = crud.reorder_schedule(db, body.ids)
+    return ok({"updated": updated})
+
+
+@router.delete("/schedule/{item_id}")
+def remove_schedule_item(item_id: int, db: Session = Depends(get_db)):
+    if not crud.remove_schedule_item(db, item_id):
+        return err("调度项不存在", code=4004)
+    return ok({"success": True})
 
 
 @router.post("")

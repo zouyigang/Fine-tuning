@@ -36,3 +36,17 @@ class TaskCreate(BaseModel):
 
 class StatusIn(BaseModel):
     status: str
+
+
+class ScheduleCreateIn(BaseModel):
+    """新建批量调度项入参。"""
+    name: str
+    priority: str | None = "中"
+    gpu: str | None = "待分配"
+    scheduledAt: str | None = "立即执行"
+    taskId: int | None = None
+
+
+class ScheduleReorderIn(BaseModel):
+    """调度队列重排入参：按 ids 顺序设置 seq。"""
+    ids: list[int] = []

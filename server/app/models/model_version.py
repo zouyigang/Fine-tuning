@@ -54,3 +54,36 @@ class DeployTarget(Base):
     spec = Column(String(64))
     status = Column(String(16))
     load = Column("load_pct", Integer)
+
+
+class ModelExport(Base):
+    """模型导出记录（导出产物存于 storage/models/）。"""
+    __tablename__ = "model_export"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, index=True)
+    modelName = Column("model_name", String(64))
+    version = Column(String(16))
+    format = Column(String(16))    # ONNX/TorchScript/...
+    quant = Column(String(16))     # none/int8/fp16
+    fileName = Column("file_name", String(255))
+    storedName = Column("stored_name", String(255))
+    size = Column(String(16))
+    operator = Column(String(32))
+    time = Column(String(32))
+
+
+class ModelDeployment(Base):
+    """模型部署记录（一次「部署到目标环境」对应一条）。"""
+    __tablename__ = "model_deployment"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, index=True)
+    modelName = Column("model_name", String(64))
+    version = Column(String(16))
+    target_id = Column(Integer)
+    targetName = Column("target_name", String(64))
+    format = Column(String(16))
+    status = Column(String(16))    # 已部署/已下线
+    operator = Column(String(32))
+    time = Column(String(32))

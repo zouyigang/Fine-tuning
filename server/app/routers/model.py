@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core import storage
 from app.core.database import get_db
 from app.core.response import ok, err, page
 from app.crud import model_version as crud
@@ -10,6 +11,7 @@ from app.models.user import User
 from app.schemas.model_version import (
     ModelOut, GrayReleaseOut, ReleaseHistoryOut, DeployTargetOut, StatusIn,
     GrayReleaseIn, TrafficIn, ReleaseIn, RollbackIn,
+    ExportIn, ExportOut, DeployIn, BatchIdsIn,
 )
 
 router = APIRouter(prefix="/model", tags=["model"])
@@ -78,6 +80,26 @@ def get_archive_list(
     return ok(page(items, total, page_no, page_size))
 
 
+# ---- 导出 / 部署 / 归档（字面量路径需声明在 /{model_id} 之前）----
+
+@router.get("/exports/{export_id}/download")
+def download_export(export_id: int, db: Session = Depends(get_db)):
+    rec = crud.get_export(db, export_id)
+    if not rec:
+        return err("导出记录不存在", code=4004)
+    try:
+        abspath = storage.abspath_of("models", rec.storedName)
+    except ValueError:
+        return err("文件路径非法", code=4001)
+    return storage.file_response(abspath, rec.fileName)
+
+
+@router.post("/archive/clean")
+def batch_clean_archive(body: BatchIdsIn, db: Session = Depends(get_db)):
+    cleaned = crud.archive_clean_batch(db, body.ids)
+    return ok({"cleaned": cleaned})
+
+
 @router.put("/{model_id}/status")
 def update_model_status(model_id: int, body: StatusIn, db: Session = Depends(get_db)):
     if not crud.update_status(db, model_id, body.status):
@@ -108,5 +130,61 @@ def rollback_model(
 ):
     operator = current.real_name or current.username
     if not crud.rollback_model(db, model_id, operator, body.note or ""):
+        return err("模型不存在", code=4004)
+    return ok({"success": True})
+
+
+@router.post("/{model_id}/export")
+def export_model(
+    model_id: int,
+    body: ExportIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    operator = current.real_name or current.username
+    ok_flag, rec = crud.export_model(db, model_id, body.format, body.quant, operator)
+    if not ok_flag:
+        return err("模型不存在", code=4004)
+    return ok(ExportOut.model_validate(rec))
+
+
+@router.post("/{model_id}/deploy")
+def deploy_model(
+    model_id: int,
+    body: DeployIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    operator = current.real_name or current.username
+    ok_flag, logs = crud.deploy_model(db, model_id, body.targetId, body.format, operator)
+    if not ok_flag:
+        return err("模型或部署目标不存在", code=4004)
+    return ok({"logs": logs})
+
+
+@router.get("/{model_id}/download")
+def download_model(
+    model_id: int,
+    format: str = "ONNX",
+    quant: str = "none",
+    db: Session = Depends(get_db),
+):
+    ok_flag, abspath, name = crud.model_artifact_for_download(db, model_id, format, quant)
+    if not ok_flag:
+        return err("模型不存在", code=4004)
+    return storage.file_response(abspath, name)
+
+
+@router.post("/{model_id}/clean")
+def clean_archive(model_id: int, db: Session = Depends(get_db)):
+    ok_flag, msg = crud.archive_clean(db, model_id)
+    if not ok_flag:
+        return err(msg, code=4003)
+    return ok({"success": True, "message": msg})
+
+
+@router.post("/{model_id}/restore")
+def restore_archive(model_id: int, db: Session = Depends(get_db)):
+    if not crud.archive_restore(db, model_id):
         return err("模型不存在", code=4004)
     return ok({"success": True})

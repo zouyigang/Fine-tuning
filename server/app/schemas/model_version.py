@@ -78,3 +78,35 @@ class ReleaseIn(BaseModel):
 class RollbackIn(BaseModel):
     """快速回滚入参。"""
     note: str | None = None
+
+
+class ExportIn(BaseModel):
+    """模型导出入参。"""
+    format: str = "ONNX"
+    quant: str = "none"
+
+
+class ExportOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    model_id: int | None = None
+    modelName: str | None = None
+    version: str | None = None
+    format: str | None = None
+    quant: str | None = None
+    fileName: str | None = None
+    size: str | None = None
+    operator: str | None = None
+    time: str | None = None
+
+
+class DeployIn(BaseModel):
+    """部署入参。"""
+    targetId: int
+    format: str | None = "ONNX"
+
+
+class BatchIdsIn(BaseModel):
+    """批量操作入参（如批量清理）。"""
+    ids: list[int] = []

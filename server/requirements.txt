@@ -19,3 +19,8 @@ passlib[bcrypt]>=1.7
 
 # 后台任务（P4 启用：模拟训练调度）
 APScheduler>=3.10
+pytz>=2024.1            # APScheduler 时区 + trainer.py 直接 import
+
+# 文件导出（评估报告 PDF / Excel、错误案例导出）
+reportlab>=4.0         # PDF 生成（内置 CJK 字体 STSong-Light）
+openpyxl>=3.1          # Excel(xlsx) 生成

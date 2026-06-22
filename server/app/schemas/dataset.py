@@ -27,6 +27,16 @@ class DatasetCreate(BaseModel):
     desensitized: bool | None = True
     owner: str | None = "张三"
     updatedAt: str | None = None
+    fileId: int | None = None  # 关联已上传文件（本地上传方式）
+
+
+class UploadOut(BaseModel):
+    """文件上传返回：前端据此带 fileId + total 调用 createDataset。"""
+    fileId: int
+    fileName: str
+    size: int
+    sizeText: str
+    rows: int
 
 
 class VersionOut(BaseModel):

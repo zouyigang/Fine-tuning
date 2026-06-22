@@ -2,12 +2,15 @@
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from app.models.dataset import (
     Dataset,
     DatasetVersion,
     DesensitizeRule,
     AnnotationTask,
     DatasetPermission,
+    DatasetFile,
 )
 
 
@@ -31,13 +34,34 @@ def get_dataset(db: Session, ds_id: int) -> Dataset | None:
     return db.get(Dataset, ds_id)
 
 
+def save_dataset_file(db: Session, *, file_name: str, stored_name: str,
+                      size: int, rows: int) -> DatasetFile:
+    """登记一条上传文件记录（dataset_id 待创建数据集后回填）。"""
+    rec = DatasetFile(
+        fileName=file_name, storedName=stored_name, size=size, rows=rows,
+        uploadedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
 def create_dataset(db: Session, payload: dict) -> Dataset:
+    # 关联上传文件：回填 dataset_id，并以真实行数作为样本量
+    file_id = payload.pop("fileId", None)
+    f = db.get(DatasetFile, file_id) if file_id else None
+    if f and (f.rows or 0) > 0:
+        payload["total"] = f.rows
     item = Dataset(
         progress=0, labeled=0, version="v1.0", status="标注中", **payload
     )
     db.add(item)
     db.commit()
     db.refresh(item)
+    if f:
+        f.dataset_id = item.id
+        db.commit()
     return item
 
 

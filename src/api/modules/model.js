@@ -1,4 +1,5 @@
 import service from '@/api/request'
+import { downloadFile } from '@/utils/download'
 
 /**
  * 模型版本管理接口（已对接后端 FastAPI）。
@@ -68,7 +69,42 @@ export function getDeployTargets() {
 
 export const EXPORT_FORMATS = ['ONNX', 'TorchScript', 'PMML', 'SavedModel', 'GGUF']
 
+// 导出模型（生成产物并落库，payload: { format, quant }），返回导出记录含 id
+export function exportModel(id, payload) {
+  return service.post(`/model/${id}/export`, payload)
+}
+
+// 下载导出产物（浏览器另存为）
+export function downloadExport(exportId) {
+  return downloadFile(`/model/exports/${exportId}/download`)
+}
+
+// 部署模型到目标环境（payload: { targetId, format }），返回 { logs }
+export function deployModel(id, payload) {
+  return service.post(`/model/${id}/deploy`, payload)
+}
+
 // 归档列表
 export function getArchiveList(params = {}) {
   return service.get('/model/archive', { params })
+}
+
+// 下载模型产物（归档/版本下载，浏览器另存为）
+export function downloadModel(id, params = {}) {
+  return downloadFile(`/model/${id}/download`, { params })
+}
+
+// 清理单个归档模型（核心模型会被拒绝）
+export function cleanArchive(id) {
+  return service.post(`/model/${id}/clean`)
+}
+
+// 批量清理归档模型
+export function batchCleanArchive(ids = []) {
+  return service.post('/model/archive/clean', { ids })
+}
+
+// 恢复归档模型（状态置为 offline）
+export function restoreArchive(id) {
+  return service.post(`/model/${id}/restore`)
 }

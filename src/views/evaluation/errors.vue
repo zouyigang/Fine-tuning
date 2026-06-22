@@ -50,7 +50,7 @@ import { Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
-import { getErrorCases } from '@/api/modules/evaluation'
+import { getErrorCases, exportErrorCases } from '@/api/modules/evaluation'
 
 const loading = ref(false)
 const list = ref([])
@@ -67,8 +67,9 @@ async function load() {
   dist.value = res.dist
   loading.value = false
 }
-function exportCases() {
-  ElMessage.success('错误案例已导出（error-cases.xlsx）')
+async function exportCases() {
+  await exportErrorCases(query.errorType)
+  ElMessage.success('错误案例已导出')
 }
 onMounted(load)
 

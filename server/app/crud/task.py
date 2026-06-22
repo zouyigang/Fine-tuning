@@ -1,10 +1,11 @@
 """微调任务模块数据库读写。"""
 import random
+from datetime import datetime
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.models.task import TrainTask, TrainMetric, TrainLog
+from app.models.task import TrainTask, TrainMetric, TrainLog, ScheduleItem
 
 TOTAL_STEPS = 20000
 
@@ -110,10 +111,73 @@ def get_logs(db: Session, task_id: int, level: str = "", keyword: str = "", limi
     return db.scalars(stmt).all()
 
 
-def schedule_queue(db: Session):
-    return db.scalars(
+def _ensure_schedule_seed(db: Session):
+    """调度队列为空时，以当前排队/运行任务初始化（首次访问自动播种）。"""
+    if db.scalar(select(func.count(ScheduleItem.id))):
+        return
+    tasks = db.scalars(
         select(TrainTask)
         .where(TrainTask.status.in_(["pending", "running"]))
         .order_by(TrainTask.id)
         .limit(8)
     ).all()
+    for i, t in enumerate(tasks):
+        db.add(ScheduleItem(
+            task_id=t.id, name=t.name, priority=t.priority or "中", status=t.status,
+            gpu=t.gpu or "-", seq=i + 1,
+            scheduledAt="立即执行" if i < 2 else f"2026-06-09 0{i}:00",
+        ))
+    db.commit()
+
+
+def schedule_queue(db: Session):
+    """返回持久化的调度队列（按 seq 升序）。"""
+    _ensure_schedule_seed(db)
+    items = db.scalars(select(ScheduleItem).order_by(ScheduleItem.seq, ScheduleItem.id)).all()
+    out = []
+    for i, s in enumerate(items):
+        out.append({
+            "id": s.id, "taskId": s.task_id, "name": s.name,
+            "priority": s.priority, "status": s.status, "gpu": s.gpu,
+            "scheduledAt": s.scheduledAt, "order": i + 1,
+        })
+    return out
+
+
+def create_schedule_item(db: Session, payload: dict) -> ScheduleItem:
+    """新建批量调度项，追加到队尾。"""
+    max_seq = db.scalar(select(func.max(ScheduleItem.seq))) or 0
+    item = ScheduleItem(
+        task_id=payload.get("taskId"),
+        name=payload.get("name") or "未命名批量任务",
+        priority=payload.get("priority") or "中",
+        status="pending",
+        gpu=payload.get("gpu") or "待分配",
+        seq=max_seq + 1,
+        scheduledAt=payload.get("scheduledAt") or "立即执行",
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def remove_schedule_item(db: Session, item_id: int) -> bool:
+    s = db.get(ScheduleItem, item_id)
+    if not s:
+        return False
+    db.delete(s)
+    db.commit()
+    return True
+
+
+def reorder_schedule(db: Session, ids: list[int]) -> int:
+    """按给定 id 顺序重排 seq。返回更新条数。"""
+    updated = 0
+    for i, sid in enumerate(ids):
+        s = db.get(ScheduleItem, sid)
+        if s:
+            s.seq = i + 1
+            updated += 1
+    db.commit()
+    return updated

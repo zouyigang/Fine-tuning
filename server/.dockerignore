@@ -2,6 +2,9 @@ __pycache__/
 *.pyc
 .env
 *.db
+*.sqlite
 .venv/
 venv/
 storage/
+o.json
+r.json

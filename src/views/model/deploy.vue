@@ -8,9 +8,8 @@
           <template #header>模型导出</template>
           <el-form label-width="100px">
             <el-form-item label="选择模型">
-              <el-select v-model="model" placeholder="请选择" style="width: 100%">
-                <el-option label="实体识别模型 v5.2" value="1" />
-                <el-option label="OCR 识别模型 v3.4" value="2" />
+              <el-select v-model="model" placeholder="请选择" style="width: 100%" filterable>
+                <el-option v-for="m in models" :key="m.id" :label="`${m.name} ${m.version}`" :value="m.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="导出格式">
@@ -68,13 +67,15 @@ import { ref, computed, onMounted } from 'vue'
 import { Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getDeployTargets, EXPORT_FORMATS } from '@/api/modules/model'
+import { getDeployTargets, getModelList, exportModel as apiExport, downloadExport, deployModel, EXPORT_FORMATS } from '@/api/modules/model'
 
-const model = ref('1')
+const model = ref(null)
 const format = ref('ONNX')
 const quant = ref('none')
 const exporting = ref(false)
+const deploying = ref(false)
 const targets = ref([])
+const models = ref([])
 const deployLogs = ref([])
 
 // 前端分页（本地数据），与各列表页分页控件保持统一，默认每页 10 条
@@ -82,24 +83,41 @@ const page = ref(1)
 const pageSize = ref(10)
 const pagedTargets = computed(() => targets.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
-function exportModel() {
+async function exportModel() {
+  if (!model.value) {
+    ElMessage.warning('请先选择要导出的模型')
+    return
+  }
   exporting.value = true
-  setTimeout(() => {
-    exporting.value = false
+  try {
+    // 后端生成产物并落库，随即下载该产物文件
+    const rec = await apiExport(model.value, { format: format.value, quant: quant.value })
+    await downloadExport(rec.id)
     ElMessage.success(`已导出 ${format.value} 格式模型文件`)
-  }, 1200)
+  } finally {
+    exporting.value = false
+  }
 }
-function deploy(row) {
-  deployLogs.value = [
-    `[1/4] 正在将模型 ${format.value} 推送至「${row.name}」...`,
-    `[2/4] 校验模型完整性... OK`,
-    `[3/4] 加载模型到推理引擎... OK`,
-    `[4/4] 健康检查通过，服务已就绪 ✓`
-  ]
-  ElMessage.success(`已部署至 ${row.name}`)
+async function deploy(row) {
+  if (!model.value) {
+    ElMessage.warning('请先选择要部署的模型')
+    return
+  }
+  deploying.value = true
+  try {
+    const res = await deployModel(model.value, { targetId: row.id, format: format.value })
+    deployLogs.value = res.logs || []
+    ElMessage.success(`已部署至 ${row.name}`)
+    targets.value = await getDeployTargets() // 刷新负载
+  } finally {
+    deploying.value = false
+  }
 }
 onMounted(async () => {
   targets.value = await getDeployTargets()
+  const res = await getModelList({ pageSize: 100 })
+  models.value = res.list || []
+  if (models.value.length) model.value = models.value[0].id
 })
 </script>
 

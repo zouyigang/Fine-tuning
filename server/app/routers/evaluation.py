@@ -2,8 +2,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core import storage
 from app.core.database import get_db
-from app.core.response import ok, page
+from app.core.response import ok, err, page
 from app.crud import evaluation as crud
 from app.deps import get_current_user
 from app.models.user import User
@@ -11,8 +12,11 @@ from app.schemas.evaluation import (
     EvalTaskOut, ReviewSampleOut, ErrorCaseOut, EvalReportOut,
     ReportGenIn, ReviewSubmitIn,
 )
+from app.services import reporting
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @router.get("/list")
@@ -93,3 +97,29 @@ def generate_report(
 def submit_review_results(body: ReviewSubmitIn, db: Session = Depends(get_db)):
     updated = crud.submit_review_results(db, [r.model_dump() for r in body.results])
     return ok({"updated": updated})
+
+
+@router.get("/error-cases/export")
+def export_error_cases(errorType: str = "", db: Session = Depends(get_db)):
+    """导出错误案例为 Excel 文件。"""
+    rows = crud.all_error_cases(db, errorType)
+    data = reporting.error_cases_excel(rows)
+    name = f"错误案例分析{('-' + errorType) if errorType else ''}.xlsx"
+    _stored, abspath, _size = storage.save_bytes("reports", name, data)
+    return storage.file_response(abspath, name, media_type=_XLSX_MIME)
+
+
+@router.get("/reports/{report_id}/export")
+def export_report(report_id: int, format: str = "pdf", db: Session = Depends(get_db)):
+    """导出评估报告：format=pdf 生成 PDF，format=excel 生成 Excel。"""
+    rep = crud.get_report(db, report_id)
+    if not rep:
+        return err("报告不存在", code=4004)
+    if format == "excel":
+        data = reporting.report_excel(rep)
+        name, mime = f"{rep.name}.xlsx", _XLSX_MIME
+    else:
+        data = reporting.report_pdf(rep)
+        name, mime = f"{rep.name}.pdf", "application/pdf"
+    _stored, abspath, _size = storage.save_bytes("reports", name, data)
+    return storage.file_response(abspath, name, media_type=mime)
