@@ -107,6 +107,80 @@ docker compose down -v             # ⚠️ 连数据库 / 上传文件数据卷
 
 ---
 
+## GPU 真实微调部署（可选）
+
+> 默认 Docker 跑的是**模拟训练**（`ENGINE_MODE=sim`，造曲线演示，无需 GPU）。若要在本机用 **NVIDIA GPU** 跑**真实** LoRA/QLoRA 微调（LLaMA-Factory），用本节的 GPU 叠加配置。原理与版本锁定见 [`docs/真实微调引擎方案.md`](docs/真实微调引擎方案.md)。
+
+### 0. 前置条件
+
+- 一块 **NVIDIA GPU** + 安装**最新 N 卡驱动**（CUDA/cuDNN 由镜像内的 torch 自带，宿主**不用**装 CUDA Toolkit）。
+- 让容器能用 GPU——按你的环境二选一：
+  - **Windows / macOS（Docker Desktop）**：**无需**手动装 NVIDIA Container Toolkit，Docker Desktop 已内置 GPU 支持。只要：① 在 **Windows 主机**装最新 NVIDIA 驱动（**不是**在 WSL2 里装，WSL2 会自动获取）；② Docker Desktop 用 **WSL2 后端**（Settings → General 勾「Use the WSL 2 based engine」，默认即是）。
+  - **Linux 原生 Docker**：才需手动装 `nvidia-container-toolkit`，然后 `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`。
+  - 验证（两者通用）：`docker run --rm --gpus all nvidia/cuda:13.2.0-base-ubuntu22.04 nvidia-smi` 能列出你的显卡即 OK。
+- 显存参考（单卡）：Qwen3-0.6B/1.7B/4B 可 LoRA/QLoRA；8B 建议 QLoRA(4bit)；14B+ 谨慎。
+
+### 1. 放置离线基础模型
+
+把 HF 格式权重放到宿主某目录，**子目录名 = 前端「基础模型」选项去掉「（开源）」后缀**。例如选 `Qwen3-0.6B（开源）` 就要有 `Qwen3-0.6B/`：
+
+```
+<你的模型目录>/
+└── Qwen3-0.6B/
+    ├── config.json
+    ├── model.safetensors
+    └── tokenizer.json ...
+```
+
+下载示例（ModelScope，国内快）：
+
+```bash
+pip install modelscope
+python -c "from modelscope import snapshot_download; snapshot_download('Qwen/Qwen3-0.6B', local_dir='./models/Qwen3-0.6B')"
+```
+
+### 2. 启动（GPU 叠加配置）
+
+在**仓库根目录**执行（把 GPU override 叠加在主 compose 上）：
+
+```bash
+# MODELS_DIR 指向上一步的模型根目录（默认 ./models）
+MODELS_DIR=./models docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+- 它把 backend 换成 CUDA 镜像（`server/Dockerfile.cuda`：torch 2.12.1+cu132 + LLaMA-Factory 0.9.5）、置 `ENGINE_MODE=real`、`gpus: all`，并把宿主 `${MODELS_DIR}` 只读挂载到容器 `/data/models`。
+- 首次构建会拉 torch（较大），耐心等。前端 / MySQL / 端口与默认一致。
+
+### 3. 跑一次真实微调
+
+前端「微调任务管理 → 任务创建」：选基础模型（如 `Qwen3-0.6B`）、数据集、微调方式（LoRA/QLoRA）、配超参 → 提交。任务进入 `pending` → 引擎按 GPU 并发拉起真实训练 → 「实时监控」看**真实 loss 下降与 GPU 利用率** → 训练完自动合并导出权重并生成「待评估」模型版本，接入评估/上线/部署闭环。
+
+- 找不到所选数据集的上传文件时，会自动回退一个内置 demo 数据集，保证链路可跑通。
+- 启停/重试：失败或中断的任务「断点重试」会从 checkpoint 续训；显存不足会给出 OOM 提示。
+
+### 可配环境变量
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `MODELS_DIR` | `./models` | 宿主离线模型根目录（挂载到容器 `/data/models`） |
+| `MAX_CONCURRENT_TRAINS` | `1` | 最大并发训练数（一般 = GPU 数） |
+| `MYSQL_ROOT_PASSWORD` / `JWT_SECRET` | 同主 compose | 见上方一键启动节 |
+
+### 切回模拟模式
+
+不带 GPU override 即可（默认就是 sim）：`docker compose up -d --build`。
+
+### 常见问题
+
+| 现象 | 原因 / 解决 |
+| --- | --- |
+| `docker run --gpus all ...` 报 `could not select device driver` | 未装/未配置 NVIDIA Container Toolkit；按前置条件重装并重启 docker |
+| 任务一直 `failed`，日志含 `out of memory` | 显存不足：改用 QLoRA、减小批次、缩短最大序列长度，或换更小模型 |
+| 任务 `failed`，日志含「未在 MODELS_DIR 找到基础模型」 | 模型子目录名没对上（要等于选项去掉「（开源）」），或 `MODELS_DIR` 没指对 |
+| 监控页 GPU 利用率为 0 | 容器内 `pynvml` 不可用或未透传 GPU；确认 `--gpus all` 生效（`docker compose ... exec backend nvidia-smi`） |
+
+---
+
 ## 快速开始（本地开发联调，不用 Docker）
 
 > 启动顺序：**① MySQL → ② 后端 → ③ 前端**。前端通过 vite 代理把 `/api` 转发到后端 `:8000`。
@@ -214,4 +288,4 @@ src/
 - `vite.config.js` 的 `server.proxy` 已把 `/api` 代理到 `http://localhost:8000`。
 - `src/api/request.js` 统一处理 `{ code, data, message }` 响应结构与 token 注入；`code:401` 自动登出跳登录页。
 
-进度：P0 脚手架 → P1 建表+种子 → P2 鉴权 → P3 数据集 → P4 任务+模拟训练 → P5 评估/版本/配置 → 工作台总览对接 → P6（操作日志审计、接口层 RBAC + 用户管理）→ 收尾批次（数据集真实上传、模型导出/部署/归档、报告 PDF/Excel 导出、批量调度持久化、Alembic 迁移、Docker 一键部署），均已完成。剩余：真实微调训练引擎（独立排期）。
+进度：P0 脚手架 → P1 建表+种子 → P2 鉴权 → P3 数据集 → P4 任务+模拟训练 → P5 评估/版本/配置 → 工作台总览对接 → P6（操作日志审计、接口层 RBAC + 用户管理）→ 收尾批次（数据集真实上传、模型导出/部署/归档、报告 PDF/Excel 导出、批量调度持久化、Alembic 迁移、Docker 一键部署）→ 真实微调引擎 M1-M5（LLaMA-Factory 真实 LoRA/QLoRA、超参透传、真实指标/产物、控制面、断点续训/OOM、CUDA 镜像），均已完成。GPU 真实训练部署见上方「GPU 真实微调部署（可选）」。剩余：平台级 Token 刷新 / RBAC 收紧（与引擎解耦，可另排期）。
