@@ -39,7 +39,67 @@ class TrainingManager:
     def __init__(self):
         self._lock = threading.Lock()
         self._running: dict[int, subprocess.Popen] = {}  # task_id -> Popen
+        self._device: dict[int, int] = {}                # task_id -> GPU 序号
+        self._intent: dict[int, str] = {}                # task_id -> 用户主动目标态(paused/stopped)
+        self._gpu_count: int | None = None
         self._started = False
+
+    # ---- GPU 探测 / 设备分配 ----
+    def gpu_count(self) -> int:
+        """探测可用 GPU 数：优先 pynvml，回退 torch，再回退 1。结果缓存。"""
+        if self._gpu_count is not None:
+            return self._gpu_count
+        n = 0
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            n = pynvml.nvmlDeviceGetCount()
+            pynvml.nvmlShutdown()
+        except Exception:
+            try:
+                import torch
+                n = torch.cuda.device_count()
+            except Exception:
+                n = 0
+        self._gpu_count = max(1, n)
+        return self._gpu_count
+
+    def concurrency(self) -> int:
+        """有效并发 = min(配置上限, GPU 数)。"""
+        return max(1, min(settings.MAX_CONCURRENT_TRAINS, self.gpu_count()))
+
+    def _pick_device(self) -> int:
+        """选一张未被占用的 GPU 序号（持锁调用）。"""
+        used = set(self._device.values())
+        for i in range(self.gpu_count()):
+            if i not in used:
+                return i
+        return 0
+
+    def gpu_status(self) -> list[dict]:
+        """各 GPU 实时状态（pynvml）：序号/名称/显存/利用率/当前训练任务。供监控页展示。"""
+        out = []
+        dev2task = {v: k for k, v in self._device.items()}
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            for i in range(pynvml.nvmlDeviceGetCount()):
+                h = pynvml.nvmlDeviceGetHandleByIndex(i)
+                mem = pynvml.nvmlDeviceGetMemoryInfo(h)
+                util = pynvml.nvmlDeviceGetUtilizationRates(h)
+                name = pynvml.nvmlDeviceGetName(h)
+                out.append({
+                    "index": i,
+                    "name": name.decode() if isinstance(name, bytes) else name,
+                    "memUsedMB": round(mem.used / 1024 / 1024),
+                    "memTotalMB": round(mem.total / 1024 / 1024),
+                    "util": util.gpu,
+                    "taskId": dev2task.get(i),
+                })
+            pynvml.nvmlShutdown()
+        except Exception as e:
+            return [{"error": f"GPU 信息不可用: {e}"}]
+        return out
 
     # ---- 对外控制 ----
     def start(self):
@@ -48,12 +108,14 @@ class TrainingManager:
             return
         self._started = True
         threading.Thread(target=self._scheduler_loop, daemon=True).start()
-        print(f"真实微调引擎已启动（ENGINE_MODE=real, 最大并发={settings.MAX_CONCURRENT_TRAINS}）", flush=True)
+        print(f"真实微调引擎已启动（ENGINE_MODE=real, GPU={self.gpu_count()}, 并发={self.concurrency()}）", flush=True)
 
-    def stop_task(self, task_id: int) -> bool:
-        """终止运行中的训练子进程。"""
+    def stop_task(self, task_id: int, target_status: str = "stopped") -> bool:
+        """终止训练子进程。target_status 记为用户主动目标态，避免被收尾误判为 failed。"""
         with self._lock:
             p = self._running.get(task_id)
+            if p:
+                self._intent[task_id] = target_status
         if not p:
             return False
         try:
@@ -73,7 +135,7 @@ class TrainingManager:
 
     def _dispatch_once(self):
         with self._lock:
-            free = settings.MAX_CONCURRENT_TRAINS - len(self._running)
+            free = self.concurrency() - len(self._running)
         if free <= 0:
             return
         db = SessionLocal()
@@ -124,9 +186,11 @@ class TrainingManager:
         finally:
             db.close()
 
+        with self._lock:
+            device = self._pick_device()
         cmd = self._build_cmd(yaml_path)
         env = dict(os.environ)
-        env["CUDA_VISIBLE_DEVICES"] = env.get("CUDA_VISIBLE_DEVICES", "0")
+        env["CUDA_VISIBLE_DEVICES"] = str(device)
         env["PYTHONUTF8"] = "1"
         try:
             proc = subprocess.Popen(
@@ -138,6 +202,7 @@ class TrainingManager:
             return
         with self._lock:
             self._running[task_id] = proc
+            self._device[task_id] = device
         db = SessionLocal()
         try:
             t = db.get(TrainTask, task_id)
@@ -219,7 +284,13 @@ class TrainingManager:
         code = proc.returncode
         with self._lock:
             self._running.pop(task_id, None)
-        self._finish(task_id, ok=(code == 0), error=None if code == 0 else f"训练进程退出码 {code}")
+            self._device.pop(task_id, None)
+            intent = self._intent.pop(task_id, None)
+        if intent:
+            # 用户主动暂停/终止：按目标态落库，不算失败、不建模型版本
+            self._mark(task_id, intent)
+        else:
+            self._finish(task_id, ok=(code == 0), error=None if code == 0 else f"训练进程退出码 {code}")
 
     def _drain_metrics(self, db, task_id: int, log_path: str | None, seen: int) -> int:
         if not log_path or not os.path.exists(log_path):
@@ -258,6 +329,21 @@ class TrainingManager:
         return len(lines)
 
     # ---- 收尾 ----
+    def _mark(self, task_id: int, status: str):
+        """用户主动暂停/终止后的落库（不建模型版本）。"""
+        db = SessionLocal()
+        try:
+            t = db.get(TrainTask, task_id)
+            if not t:
+                return
+            t.status = status
+            t.pid = None
+            t.finishedAt = _now()
+            db.commit()
+            _log(db, task_id, "WARN", "已暂停（进程已停止）" if status == "paused" else "已终止")
+        finally:
+            db.close()
+
     def _finish(self, task_id: int, *, ok: bool, error: str | None):
         db = SessionLocal()
         try:

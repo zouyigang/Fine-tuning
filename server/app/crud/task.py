@@ -41,6 +41,19 @@ def update_status(db: Session, task_id: int, status: str) -> bool:
     return True
 
 
+def requeue_task(db: Session, task_id: int) -> bool:
+    """继续/重试：重置运行态字段并置 pending，交由真实引擎调度器重新拉起。"""
+    t = db.get(TrainTask, task_id)
+    if not t:
+        return False
+    t.status = "pending"
+    t.progress = 0
+    t.pid = None
+    t.errorMsg = None
+    db.commit()
+    return True
+
+
 def metric_count(db: Session, task_id: int) -> int:
     return db.scalar(select(func.count(TrainMetric.id)).where(TrainMetric.task_id == task_id)) or 0
 

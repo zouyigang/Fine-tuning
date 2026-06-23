@@ -63,13 +63,13 @@ async function load() {
 async function change(row, status) {
   if (status === 'failed') await ElMessageBox.confirm('确认终止该训练任务？已训练进度将保存为断点。', '终止任务', { type: 'warning' })
   await updateTaskStatus(row.id, status)
-  row.status = status
   ElMessage.success('操作成功')
+  await load()  // 真实引擎下实际状态以后端为准（如继续=重新入队 pending）
 }
 async function retry(row) {
   await updateTaskStatus(row.id, 'running')
-  row.status = 'running'
-  ElMessage.success('已从断点恢复训练')
+  ElMessage.success('已重新入队，等待引擎调度')
+  await load()
 }
 onMounted(load)
 </script>

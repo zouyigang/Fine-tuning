@@ -47,6 +47,11 @@ export function downloadTaskLogs(taskId, params = {}) {
   })
 }
 
+// GPU 实时状态（真实引擎模式；sim 模式返回占位）
+export function getGpus() {
+  return service.get('/task/gpus')
+}
+
 // 批量调度队列
 export function getScheduleQueue() {
   return service.get('/task/schedule')

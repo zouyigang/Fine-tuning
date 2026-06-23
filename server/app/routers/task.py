@@ -113,10 +113,27 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
 @router.put("/{task_id}/status")
 def update_task_status(task_id: int, body: StatusIn, db: Session = Depends(get_db)):
     from app.core.config import settings
-    # real 模式下停止/暂停：先终止训练子进程，再落库状态
-    if settings.ENGINE_MODE == "real" and body.status in ("stopped", "paused", "failed"):
+    if settings.ENGINE_MODE == "real":
         from app.services.engine import manager
-        manager.stop_task(task_id)
+        # 继续/重试（前端发 running）：重置并重新入队，交调度器拉起
+        if body.status == "running":
+            if not crud.requeue_task(db, task_id):
+                return err("任务不存在", code=4004)
+            return ok({"success": True, "status": "pending"})
+        # 暂停/终止：kill 子进程并记主动目标态（避免被收尾误判 failed）
+        if body.status in ("paused", "stopped", "failed"):
+            manager.stop_task(task_id, target_status=body.status)
     if not crud.update_status(db, task_id, body.status):
         return err("任务不存在", code=4004)
     return ok({"success": True})
+
+
+@router.get("/gpus")
+def get_gpus():
+    """真实引擎 GPU 状态（pynvml 实时采样）；sim 模式返回占位。"""
+    from app.core.config import settings
+    if settings.ENGINE_MODE != "real":
+        return ok({"mode": "sim", "gpus": []})
+    from app.services.engine import manager
+    return ok({"mode": "real", "count": manager.gpu_count(),
+               "concurrency": manager.concurrency(), "gpus": manager.gpu_status()})
