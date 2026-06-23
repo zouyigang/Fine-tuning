@@ -188,7 +188,7 @@ class TrainingManager:
 
         with self._lock:
             device = self._pick_device()
-        cmd = self._build_cmd(yaml_path)
+        cmd = self._build_cmd("train", yaml_path)
         env = dict(os.environ)
         env["CUDA_VISIBLE_DEVICES"] = str(device)
         env["PYTHONUTF8"] = "1"
@@ -215,10 +215,10 @@ class TrainingManager:
         threading.Thread(target=self._pump_stdout, args=(task_id, proc), daemon=True).start()
         threading.Thread(target=self._watch, args=(task_id, proc), daemon=True).start()
 
-    def _build_cmd(self, yaml_path: str) -> list[str]:
+    def _build_cmd(self, verb: str, yaml_path: str) -> list[str]:
         if settings.LLAMAFACTORY_BIN:
-            return [settings.LLAMAFACTORY_BIN, "train", yaml_path]
-        return [sys.executable, "-m", "llamafactory.cli", "train", yaml_path]
+            return [settings.LLAMAFACTORY_BIN, verb, yaml_path]
+        return [sys.executable, "-m", "llamafactory.cli", verb, yaml_path]
 
     def _prepare_dataset(self, db, t: TrainTask) -> str:
         """把任务关联的上传文件注册为 LF 数据集，返回数据集名。
@@ -366,7 +366,7 @@ class TrainingManager:
             db.close()
 
     def _make_model_version(self, db, t: TrainTask):
-        """训练成功 → 建 model_version（待评估）+ 写 adapter 产物。"""
+        """训练成功 → 建 model_version（待评估）+ 写产物（adapter；LoRA 再合并出 merged）。"""
         from app.core import storage as st
 
         ver = self._next_version(db, t.name)
@@ -381,14 +381,58 @@ class TrainingManager:
         t.modelVersionId = mv.id
 
         if t.outputDir and os.path.isdir(t.outputDir):
-            size = self._dir_size(t.outputDir)
-            mv.size = st.human_size(size)
-            db.add(TaskArtifact(
-                task_id=t.id, kind=("merged" if t.method == "full" else "adapter"),
-                path=t.outputDir, size=st.human_size(size), createdAt=_now(),
-            ))
+            out_size = self._dir_size(t.outputDir)
+            if t.method == "full":
+                # 全参微调：输出目录即完整权重
+                mv.size = st.human_size(out_size)
+                db.add(TaskArtifact(task_id=t.id, kind="merged", path=t.outputDir,
+                                    size=st.human_size(out_size), createdAt=_now()))
+            else:
+                # LoRA/QLoRA：先记 adapter 产物
+                db.add(TaskArtifact(task_id=t.id, kind="adapter", path=t.outputDir,
+                                    size=st.human_size(out_size), createdAt=_now()))
+                mv.size = st.human_size(out_size)
         db.commit()
         _log(db, t.id, "INFO", f"已生成模型版本 {t.name} {ver}（待评估）")
+
+        # LoRA/QLoRA：合并 adapter 进基座，导出完整权重（best-effort，失败不影响版本）
+        if t.method in (None, "lora", "qlora") and t.baseModelPath and t.outputDir \
+                and os.path.exists(os.path.join(t.outputDir, "adapter_config.json")):
+            self._merge_export(db, t, mv)
+
+    def _merge_export(self, db, t: TrainTask, mv: ModelVersion):
+        from app.core import storage as st
+        export_dir = os.path.abspath(os.path.join(settings.RUNS_DIR, str(t.id), "merged"))
+        template = ec.template_for(t.baseModel)
+        try:
+            yaml_path = ec.build_export_yaml(
+                task_id=t.id, model_path=t.baseModelPath, adapter_dir=t.outputDir,
+                template=template, export_dir=export_dir,
+            )
+        except Exception as e:
+            _log(db, t.id, "WARN", f"生成合并配置失败，跳过 merge: {e}")
+            return
+        _log(db, t.id, "INFO", "开始合并 LoRA 权重导出完整模型...")
+        cmd = self._build_cmd("export", yaml_path)
+        env = dict(os.environ)
+        env["CUDA_VISIBLE_DEVICES"] = str(self._device.get(t.id, 0))
+        env["PYTHONUTF8"] = "1"
+        try:
+            proc = subprocess.run(cmd, env=env, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True,
+                                  encoding="utf-8", errors="ignore", timeout=1800)
+        except Exception as e:
+            _log(db, t.id, "WARN", f"合并导出启动失败: {e}")
+            return
+        if proc.returncode == 0 and os.path.isdir(export_dir):
+            size = self._dir_size(export_dir)
+            db.add(TaskArtifact(task_id=t.id, kind="merged", path=export_dir,
+                                size=st.human_size(size), createdAt=_now()))
+            mv.size = st.human_size(size)
+            db.commit()
+            _log(db, t.id, "INFO", f"已合并导出完整模型至 {export_dir}（{st.human_size(size)}）")
+        else:
+            _log(db, t.id, "WARN", f"合并导出失败（退出码 {proc.returncode}），仅保留 adapter 产物")
 
     def _next_version(self, db, name: str) -> str:
         cnt = db.scalar(select(func.count(ModelVersion.id)).where(ModelVersion.name == name)) or 0

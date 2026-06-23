@@ -233,3 +233,24 @@ def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
     return yaml_path, output_dir
+
+
+def build_export_yaml(*, task_id: int, model_path: str, adapter_dir: str,
+                      template: str, export_dir: str) -> str:
+    """生成 LF 合并导出 YAML（把 LoRA adapter 合并进基座，输出完整权重）。返回 yaml 路径。"""
+    run_dir = os.path.abspath(os.path.join(settings.RUNS_DIR, str(task_id)))
+    os.makedirs(export_dir, exist_ok=True)
+    cfg = {
+        "model_name_or_path": model_path,
+        "adapter_name_or_path": adapter_dir,
+        "template": template,
+        "finetuning_type": "lora",
+        "trust_remote_code": True,
+        "export_dir": export_dir,
+        "export_size": 5,
+        "export_legacy_format": False,
+    }
+    yaml_path = os.path.join(run_dir, "export.yaml")
+    with open(yaml_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+    return yaml_path

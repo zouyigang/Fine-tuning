@@ -162,6 +162,16 @@ def deploy_model(
     return ok({"logs": logs})
 
 
+@router.get("/{model_id}/artifacts")
+def model_artifacts(model_id: int, db: Session = Depends(get_db)):
+    """模型版本关联的真实训练产物（adapter/merged 权重路径与大小）；无则空列表。"""
+    arts = crud.real_artifacts(db, model_id)
+    return ok([
+        {"id": a.id, "kind": a.kind, "path": a.path, "size": a.size, "createdAt": a.createdAt}
+        for a in arts
+    ])
+
+
 @router.get("/{model_id}/download")
 def download_model(
     model_id: int,

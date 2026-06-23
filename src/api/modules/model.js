@@ -79,6 +79,11 @@ export function downloadExport(exportId) {
   return downloadFile(`/model/exports/${exportId}/download`)
 }
 
+// 模型版本关联的真实训练产物（adapter/merged 权重路径与大小）
+export function getModelArtifacts(id) {
+  return service.get(`/model/${id}/artifacts`)
+}
+
 // 部署模型到目标环境（payload: { targetId, format }），返回 { logs }
 export function deployModel(id, payload) {
   return service.post(`/model/${id}/deploy`, payload)

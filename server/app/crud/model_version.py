@@ -1,5 +1,6 @@
 """模型版本管理模块数据库读写。"""
 import json
+import os
 import random
 from datetime import datetime
 
@@ -11,6 +12,7 @@ from app.models.model_version import (
     ModelVersion, GrayRelease, ReleaseHistory, DeployTarget,
     ModelExport, ModelDeployment,
 )
+from app.models.task import TaskArtifact
 
 # 导出格式 → 文件后缀
 _FORMAT_EXT = {
@@ -19,14 +21,47 @@ _FORMAT_EXT = {
 }
 
 
-def _artifact_bytes(m: ModelVersion, fmt: str, quant: str) -> bytes:
-    """生成模型导出产物（演示用 manifest，真实环境替换为序列化模型权重）。"""
+def real_artifacts(db: Session, model_id: int) -> list[TaskArtifact]:
+    """该模型版本关联训练任务的真实产物（adapter/merged）。无则空。"""
+    m = db.get(ModelVersion, model_id)
+    if not m or not m.task_id:
+        return []
+    return db.scalars(
+        select(TaskArtifact).where(TaskArtifact.task_id == m.task_id).order_by(TaskArtifact.id)
+    ).all()
+
+
+def _merged_artifact(db: Session, model_id: int) -> TaskArtifact | None:
+    for a in real_artifacts(db, model_id):
+        if a.kind == "merged":
+            return a
+    return None
+
+
+def _artifact_bytes(m: ModelVersion, fmt: str, quant: str, real: TaskArtifact | None = None) -> bytes:
+    """生成模型导出产物 manifest。
+
+    真实训练模型（real 指向 merged 权重目录）：manifest 引用真实权重路径 + 文件清单 + 大小，
+    标记 real=true；种子/演示模型则为占位说明。
+    （多 GB 权重不打包进单文件下载，manifest 作为可下载的产物描述符指向真实权重。）
+    """
     manifest = {
         "model": m.name, "version": m.version, "modelType": m.modelType,
         "dataset": m.dataset, "f1": m.f1, "format": fmt, "quantization": quant,
         "exportedAt": _now(),
-        "note": "本文件为模型微调平台导出的演示产物（manifest）；接入真实训练引擎后替换为实际模型权重。",
     }
+    if real and real.path and os.path.isdir(real.path):
+        files = sorted(os.listdir(real.path))
+        manifest.update({
+            "real": True,
+            "weightsDir": real.path,
+            "weightsSize": real.size,
+            "files": files,
+            "note": "本模型由真实微调引擎（LLaMA-Factory）训练并合并导出，weightsDir 为完整权重目录。",
+        })
+    else:
+        manifest["real"] = False
+        manifest["note"] = "演示产物（manifest）；该模型版本无关联真实训练产物。"
     return json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
 
 
@@ -179,7 +214,7 @@ def export_model(db: Session, model_id: int, fmt: str, quant: str, operator: str
     quant = quant or "none"
     ext = _FORMAT_EXT.get(fmt, "bin")
     download_name = f"{m.name}_{m.version}_{quant}.{ext}"
-    data = _artifact_bytes(m, fmt, quant)
+    data = _artifact_bytes(m, fmt, quant, real=_merged_artifact(db, m.id))
     stored, _abspath, size = storage.save_bytes("models", download_name, data)
     rec = ModelExport(
         model_id=m.id, modelName=m.name, version=m.version, format=fmt, quant=quant,
@@ -203,7 +238,8 @@ def model_artifact_for_download(db: Session, model_id: int, fmt: str = "ONNX", q
         return False, None, None
     ext = _FORMAT_EXT.get(fmt, "bin")
     download_name = f"{m.name}_{m.version}.{ext}"
-    stored, abspath, _size = storage.save_bytes("models", download_name, _artifact_bytes(m, fmt, quant))
+    data = _artifact_bytes(m, fmt, quant, real=_merged_artifact(db, m.id))
+    stored, abspath, _size = storage.save_bytes("models", download_name, data)
     return True, abspath, download_name
 
 
