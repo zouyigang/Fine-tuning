@@ -1,7 +1,7 @@
 """微调任务管理模块 ORM 模型。"""
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
 
 from app.core.database import Base
 
@@ -14,7 +14,7 @@ class TrainTask(Base):
     modelType = Column("model_type", String(32))
     baseModel = Column("base_model", String(64))
     dataset = Column(String(128))
-    status = Column(String(16), default="pending")  # pending/running/paused/success/failed
+    status = Column(String(16), default="pending")  # pending/running/paused/success/failed/stopped
     progress = Column(Integer, default=0)
     priority = Column(String(8), default="中")
     gpu = Column(String(32))
@@ -23,6 +23,16 @@ class TrainTask(Base):
     creator = Column(String(32))
     createdAt = Column("created_at", String(32))
     duration = Column(String(32))
+
+    # ---- 真实微调引擎（M1）----
+    method = Column(String(16))                       # lora/qlora/full
+    hyperparams = Column(JSON)                         # {lr,batchSize,epochs,optimizer,maxLen,...}
+    baseModelPath = Column("base_model_path", String(255))  # 解析出的离线权重绝对路径
+    outputDir = Column("output_dir", String(255))     # LF 输出目录（含 trainer_log.jsonl）
+    pid = Column(Integer)                              # 训练子进程 PID（用于停止）
+    errorMsg = Column("error_msg", String(512))       # 失败原因
+    modelVersionId = Column("model_version_id", Integer)  # 训练成功后产出的 model_version.id
+    finishedAt = Column("finished_at", String(32))
 
 
 class TrainMetric(Base):
@@ -47,6 +57,18 @@ class TrainLog(Base):
     time = Column(String(32))
     level = Column(String(8))
     msg = Column(String(512))
+
+
+class TaskArtifact(Base):
+    """训练产物清单：一个任务可有 adapter（LoRA 增量）/ merged（合并权重）等多条。"""
+    __tablename__ = "task_artifact"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, index=True)
+    kind = Column(String(16))                 # adapter/merged/checkpoint
+    path = Column(String(255))                # 产物绝对/相对路径
+    size = Column(String(16))                 # 可读大小
+    createdAt = Column("created_at", String(32))
 
 
 class ScheduleItem(Base):

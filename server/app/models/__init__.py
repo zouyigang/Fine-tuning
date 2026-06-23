@@ -11,6 +11,8 @@ from app.models.task import (  # noqa: F401
     TrainTask,
     TrainMetric,
     TrainLog,
+    TaskArtifact,
+    ScheduleItem,
 )
 from app.models.evaluation import (  # noqa: F401
     EvalTask,

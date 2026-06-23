@@ -24,3 +24,8 @@ pytz>=2024.1            # APScheduler 时区 + trainer.py 直接 import
 # 文件导出（评估报告 PDF / Excel、错误案例导出）
 reportlab>=4.0         # PDF 生成（内置 CJK 字体 STSong-Light）
 openpyxl>=3.1          # Excel(xlsx) 生成
+
+# 真实微调引擎（ENGINE_MODE=real）：调 LLaMA-Factory 跑训练
+# 注意：torch / llamafactory 体量大且需匹配 CUDA，单独按 docs/真实微调引擎方案.md 安装，不在此 pin
+PyYAML>=6.0            # 生成 LF 训练 YAML 配置
+nvidia-ml-py>=12.0     # GPU 利用率/显存真实采样（pynvml）

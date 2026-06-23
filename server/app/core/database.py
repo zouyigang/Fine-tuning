@@ -8,8 +8,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.core.config import settings
 
-# SQLite 需要 check_same_thread=False 以配合 FastAPI 多线程
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+# SQLite：check_same_thread=False 配合多线程；timeout 避免引擎多线程并发写时 database is locked
+connect_args = {"check_same_thread": False, "timeout": 30} if settings.DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(settings.DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

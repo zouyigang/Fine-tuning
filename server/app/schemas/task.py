@@ -19,6 +19,10 @@ class TaskOut(BaseModel):
     creator: str | None = None
     createdAt: str | None = None
     duration: str | None = None
+    method: str | None = None
+    hyperparams: dict | None = None
+    errorMsg: str | None = None
+    modelVersionId: int | None = None
 
 
 class TaskCreate(BaseModel):
@@ -32,6 +36,9 @@ class TaskCreate(BaseModel):
     creator: str | None = None
     createdAt: str | None = None
     duration: str | None = None
+    # 真实引擎：微调方式 + 超参（{lr,batchSize,epochs,optimizer,maxLen,...}）
+    method: str | None = "lora"
+    hyperparams: dict | None = None
 
 
 class StatusIn(BaseModel):

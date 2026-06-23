@@ -27,9 +27,13 @@ async def lifespan(app: FastAPI):
         from scripts.seed import seed_if_empty, ensure_users
         seed_if_empty()
         ensure_users()  # 幂等：保证默认账号存在
-    # 启动模拟训练调度器（P4）
-    from app.services.trainer import start_scheduler
-    start_scheduler()
+    # 训练调度：real=真实 LLaMA-Factory 引擎；sim=模拟训练调度器（P4）
+    if settings.ENGINE_MODE == "real":
+        from app.services.engine import start_engine
+        start_engine()
+    else:
+        from app.services.trainer import start_scheduler
+        start_scheduler()
     yield
 
 

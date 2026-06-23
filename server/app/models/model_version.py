@@ -17,6 +17,7 @@ class ModelVersion(Base):
     status = Column(String(16))  # evaluating/evaluated/gray/online/offline/archived
     trainAt = Column("train_at", String(32))
     creator = Column(String(32))
+    task_id = Column(Integer, index=True)  # 关联产出该模型的训练任务（真实引擎写入）
 
 
 class GrayRelease(Base):

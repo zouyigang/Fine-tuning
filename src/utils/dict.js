@@ -16,6 +16,7 @@ export const DATA_TYPES = [
 ]
 
 export const BASE_MODELS = [
+  { value: 'qwen3-0.6b', label: 'Qwen3-0.6B（开源）' },
   { value: 'qwen2-7b', label: 'Qwen2-7B（开源）' },
   { value: 'qwen2-72b', label: 'Qwen2-72B（开源）' },
   { value: 'llama3-8b', label: 'Llama3-8B（开源）' },

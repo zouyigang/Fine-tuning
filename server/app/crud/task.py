@@ -22,8 +22,10 @@ def list_tasks(db: Session, keyword: str = "", status: str = "", page: int = 1, 
 
 
 def create_task(db: Session, payload: dict) -> TrainTask:
-    # 新建即进入训练（status=running），由调度器推进进度
-    item = TrainTask(status="running", progress=0, loss="-", **payload)
+    # real：入队等待真实引擎调度（pending）；sim：创建即 running，由模拟调度器推进
+    from app.core.config import settings
+    init_status = "pending" if settings.ENGINE_MODE == "real" else "running"
+    item = TrainTask(status=init_status, progress=0, loss="-", **payload)
     db.add(item)
     db.commit()
     db.refresh(item)

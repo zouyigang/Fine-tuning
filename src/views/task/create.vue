@@ -109,7 +109,21 @@ function next() {
 }
 async function submit() {
   submitting.value = true
-  await createTask({ name: form.name, modelType: labelOf(MODEL_TYPES, form.modelType), baseModel: labelOf(BASE_MODELS, form.baseModel), dataset: form.dataset, priority: '中', gpu: '2 × A100', epoch: `0/${form.epochs}`, creator: '张三', createdAt: '2026-06-09 10:30', duration: '0m' })
+  await createTask({
+    name: form.name,
+    modelType: labelOf(MODEL_TYPES, form.modelType),
+    baseModel: labelOf(BASE_MODELS, form.baseModel),
+    dataset: form.dataset,
+    priority: '中',
+    gpu: '2 × A100',
+    epoch: `0/${form.epochs}`,
+    creator: '张三',
+    createdAt: '2026-06-09 10:30',
+    duration: '0m',
+    // 真实引擎：透传微调方式与超参（替代过去被丢弃的配置）
+    method: form.method,
+    hyperparams: { lr: form.lr, batchSize: form.batchSize, epochs: form.epochs, optimizer: form.optimizer }
+  })
   submitting.value = false
   ElMessage.success('任务已创建并进入训练队列')
   router.push('/task/monitor')

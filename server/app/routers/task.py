@@ -112,6 +112,11 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
 
 @router.put("/{task_id}/status")
 def update_task_status(task_id: int, body: StatusIn, db: Session = Depends(get_db)):
+    from app.core.config import settings
+    # real 模式下停止/暂停：先终止训练子进程，再落库状态
+    if settings.ENGINE_MODE == "real" and body.status in ("stopped", "paused", "failed"):
+        from app.services.engine import manager
+        manager.stop_task(task_id)
     if not crud.update_status(db, task_id, body.status):
         return err("任务不存在", code=4004)
     return ok({"success": True})
