@@ -95,28 +95,36 @@ def _load_rows(abspath: str) -> list:
     return []
 
 
-def register_dataset(name: str, abspath: str) -> str:
-    """把标准格式数据集文件注册进 LF data/dataset_info.json，返回数据集名。
+def register_dataset(name: str, abspath: str, ds_type: str | None = None) -> str:
+    """把数据集文件注册进 LF data/dataset_info.json，返回数据集名。
 
-    M1 仅支持标准格式：
+    标准格式直通：
     - alpaca: {instruction,input,output}
     - sharegpt: {conversations:[...]}
     - prompt_response: {prompt,response} → 映射为 alpaca(instruction/output)
-    非标准格式抛 ValueError（由调用方转成失败原因）。
+    非标准格式（M2）：按业务类型 ds_type 调 dataset_convert 转成 alpaca 再注册；
+    仍无法转换则抛 ValueError（由调用方转成失败原因）。
     """
     rows = _load_rows(abspath)
     fmt = _detect_format(rows)
     if fmt == "unknown":
-        raise ValueError("数据集非标准格式（仅支持 alpaca / sharegpt / {prompt,response}）")
+        # M2：业务原始 schema → alpaca
+        from app.services import dataset_convert
+        samples, note = dataset_convert.convert(rows, ds_type)
+        if not samples:
+            raise ValueError(note)
+        data_dir = _lf_data_dir()
+        os.makedirs(data_dir, exist_ok=True)
+        ds_key = re.sub(r"[^\w]", "_", name) or "ds"
+        conv_path = os.path.join(data_dir, f"{ds_key}_converted.jsonl")
+        with open(conv_path, "w", encoding="utf-8") as f:
+            for s in samples:
+                f.write(json.dumps(s, ensure_ascii=False) + "\n")
+        _write_dataset_info(ds_key, os.path.abspath(conv_path), "alpaca")
+        return ds_key
 
     data_dir = _lf_data_dir()
     os.makedirs(data_dir, exist_ok=True)
-    info_path = os.path.join(data_dir, "dataset_info.json")
-    info = {}
-    if os.path.exists(info_path):
-        with open(info_path, "r", encoding="utf-8") as f:
-            info = json.load(f) or {}
-
     ds_key = re.sub(r"[^\w]", "_", name) or "ds"
     if fmt == "prompt_response":
         # 现转成 alpaca 落一个新文件，避免改写用户原文件
@@ -128,15 +136,26 @@ def register_dataset(name: str, abspath: str) -> str:
                     "input": "",
                     "output": r.get("response") or r.get("completion") or "",
                 }, ensure_ascii=False) + "\n")
-        info[ds_key] = {"file_name": os.path.abspath(conv_path), "formatting": "alpaca"}
+        _write_dataset_info(ds_key, os.path.abspath(conv_path), "alpaca")
     elif fmt == "sharegpt":
-        info[ds_key] = {"file_name": os.path.abspath(abspath), "formatting": "sharegpt"}
+        _write_dataset_info(ds_key, os.path.abspath(abspath), "sharegpt")
     else:  # alpaca
-        info[ds_key] = {"file_name": os.path.abspath(abspath), "formatting": "alpaca"}
+        _write_dataset_info(ds_key, os.path.abspath(abspath), "alpaca")
+    return ds_key
 
+
+def _write_dataset_info(ds_key: str, file_name: str, formatting: str):
+    """把一条数据集条目合并进 LF data/dataset_info.json。"""
+    data_dir = _lf_data_dir()
+    os.makedirs(data_dir, exist_ok=True)
+    info_path = os.path.join(data_dir, "dataset_info.json")
+    info = {}
+    if os.path.exists(info_path):
+        with open(info_path, "r", encoding="utf-8") as f:
+            info = json.load(f) or {}
+    info[ds_key] = {"file_name": file_name, "formatting": formatting}
     with open(info_path, "w", encoding="utf-8") as f:
         json.dump(info, f, ensure_ascii=False, indent=2)
-    return ds_key
 
 
 def ensure_demo_dataset() -> str:

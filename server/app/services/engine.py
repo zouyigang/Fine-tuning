@@ -179,7 +179,7 @@ class TrainingManager:
             ).first()
         if rec is not None:
             abspath = st.abspath_of("datasets", rec.storedName)
-            return ec.register_dataset(f"ds{ds.id}", abspath)
+            return ec.register_dataset(f"ds{ds.id}", abspath, ds_type=ds.type)
         _log(db, t.id, "WARN", f"未找到数据集「{ds_name}」的上传文件，回退内置 demo 数据集")
         return ec.ensure_demo_dataset()
 
