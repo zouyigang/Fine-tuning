@@ -41,6 +41,20 @@ def update_status(db: Session, task_id: int, status: str) -> bool:
     return True
 
 
+def apply_hyperparams(db: Session, task_id: int, hyperparams: dict, method: str | None = None):
+    """把超参（可含微调方式）应用到任务。运行中/已完成任务不允许改。返回 (ok, msg)。"""
+    t = db.get(TrainTask, task_id)
+    if not t:
+        return False, "任务不存在"
+    if t.status in ("running", "success"):
+        return False, "运行中或已完成的任务不可修改超参"
+    t.hyperparams = hyperparams
+    if method:
+        t.method = method
+    db.commit()
+    return True, "已应用"
+
+
 def requeue_task(db: Session, task_id: int) -> bool:
     """继续/重试：重置运行态字段并置 pending，交由真实引擎调度器重新拉起。"""
     t = db.get(TrainTask, task_id)

@@ -1,0 +1,18 @@
+# GPU override：在默认 compose 基础上，把 backend 换成 CUDA 镜像 + 真实引擎。
+# 用法（叠加在主 compose 之上）：
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+# 前置：宿主装最新 N 卡驱动 + nvidia-container-toolkit；离线模型放宿主 ${MODELS_DIR:-./models}。
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.cuda
+    environment:
+      ENGINE_MODE: "real"
+      MODELS_DIR: /data/models          # 容器内路径；下面挂载宿主模型目录到此
+      RUNS_DIR: /data/storage/runs
+      MAX_CONCURRENT_TRAINS: ${MAX_CONCURRENT_TRAINS:-1}
+    volumes:
+      # 宿主离线模型目录 → 容器 /data/models（只读）
+      - ${MODELS_DIR:-./models}:/data/models:ro
+    gpus: all                            # 透传全部 GPU（需 nvidia-container-toolkit）

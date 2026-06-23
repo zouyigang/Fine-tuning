@@ -41,6 +41,7 @@ class TrainingManager:
         self._running: dict[int, subprocess.Popen] = {}  # task_id -> Popen
         self._device: dict[int, int] = {}                # task_id -> GPU 序号
         self._intent: dict[int, str] = {}                # task_id -> 用户主动目标态(paused/stopped)
+        self._oom: set[int] = set()                      # 检测到 OOM 的 task_id
         self._gpu_count: int | None = None
         self._started = False
 
@@ -75,6 +76,20 @@ class TrainingManager:
             if i not in used:
                 return i
         return 0
+
+    def _sample_gpu(self, device: int | None) -> int:
+        """采样指定 GPU 的利用率（pynvml）；不可用返回 0。"""
+        if device is None:
+            return 0
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            h = pynvml.nvmlDeviceGetHandleByIndex(device)
+            util = pynvml.nvmlDeviceGetUtilizationRates(h).gpu
+            pynvml.nvmlShutdown()
+            return int(util)
+        except Exception:
+            return 0
 
     def gpu_status(self) -> list[dict]:
         """各 GPU 实时状态（pynvml）：序号/名称/显存/利用率/当前训练任务。供监控页展示。"""
@@ -164,10 +179,16 @@ class TrainingManager:
                     raise ValueError(f"未在 MODELS_DIR 找到基础模型「{t.baseModel}」的离线权重")
                 dataset_key = self._prepare_dataset(db, t)
                 template = ec.template_for(t.baseModel)
+                # 断点续训：输出目录已有 checkpoint（多为重试场景）则从断点恢复
+                prev_out = os.path.join(settings.RUNS_DIR, str(t.id), "output")
+                resume = ec.has_checkpoint(os.path.abspath(prev_out))
                 yaml_path, output_dir = ec.build_train_yaml(
                     task_id=t.id, model_path=model_path, dataset_key=dataset_key,
                     template=template, method=(t.method or "lora"), hp=t.hyperparams or {},
+                    resume=resume,
                 )
+                if resume:
+                    _log(db, t.id, "INFO", "检测到已有 checkpoint，将从断点续训")
             except Exception as e:
                 t.status = "failed"
                 t.errorMsg = str(e)[:500]
@@ -256,8 +277,11 @@ class TrainingManager:
                 line = (line or "").rstrip()
                 if not line:
                     continue
+                low = line.lower()
+                if "out of memory" in low or "cuda out of memory" in low or "outofmemoryerror" in low:
+                    self._oom.add(task_id)
                 level = "ERROR" if ("Error" in line or "Traceback" in line) else \
-                        ("WARN" if "warn" in line.lower() else "INFO")
+                        ("WARN" if "warn" in low else "INFO")
                 _log(db, task_id, level, line)
         except Exception:
             pass
@@ -303,6 +327,7 @@ class TrainingManager:
         if len(lines) <= seen:
             return seen
         t = db.get(TrainTask, task_id)
+        gpu_util = self._sample_gpu(self._device.get(task_id))
         for line in lines[seen:]:
             s = line.strip()
             if not s:
@@ -317,7 +342,7 @@ class TrainingManager:
             pct = rec.get("percentage")
             if loss is None and val is None:
                 continue
-            db.add(TrainMetric(task_id=task_id, step=step, loss=loss, valLoss=val, acc=None, gpu=0))
+            db.add(TrainMetric(task_id=task_id, step=step, loss=loss, valLoss=val, acc=None, gpu=gpu_util))
             if t:
                 if loss is not None:
                     t.loss = str(round(float(loss), 4))
@@ -359,8 +384,12 @@ class TrainingManager:
                 self._make_model_version(db, t)
             else:
                 t.status = "failed"
-                t.errorMsg = (error or "训练失败")[:500]
+                if task_id in self._oom:
+                    t.errorMsg = "显存不足（CUDA OOM）：建议改用 QLoRA、减小批次大小、缩短最大序列长度或更换更小模型"
+                else:
+                    t.errorMsg = (error or "训练失败")[:500]
                 _log(db, task_id, "ERROR", t.errorMsg)
+            self._oom.discard(task_id)
             db.commit()
         finally:
             db.close()

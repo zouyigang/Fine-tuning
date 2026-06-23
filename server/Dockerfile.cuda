@@ -1,0 +1,28 @@
+# 后端 CUDA 镜像（ENGINE_MODE=real，真实 LLaMA-Factory 微调）
+# 宿主仅需最新 N 卡驱动 + nvidia-container-toolkit；CUDA/cuDNN 随 torch wheel 进镜像。
+# 见 docs/真实微调引擎方案.md。用法见 docker-compose.gpu.yml。
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONUTF8=1 \
+    PIP_NO_CACHE_DIR=1 \
+    ENGINE_MODE=real
+
+WORKDIR /app
+
+# 1) torch（CUDA 13.2，支持 Blackwell；wheel 自带 CUDA+cuDNN，宿主只需驱动）
+RUN pip install torch==2.12.1 --index-url https://download.pytorch.org/whl/cu132
+
+# 2) LLaMA-Factory（真实训练引擎，锁定正式版）
+RUN pip install llamafactory==0.9.5
+
+# 3) 应用依赖（清华源；含 PyYAML / nvidia-ml-py 等）
+COPY requirements.txt .
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+# 启动前迁移建表，再启服务
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

@@ -6,7 +6,9 @@ from starlette.responses import Response
 from app.core.database import get_db
 from app.core.response import ok, err, page
 from app.crud import task as crud
-from app.schemas.task import TaskOut, TaskCreate, StatusIn, ScheduleCreateIn, ScheduleReorderIn
+from app.schemas.task import (
+    TaskOut, TaskCreate, StatusIn, ScheduleCreateIn, ScheduleReorderIn, HyperApplyIn,
+)
 
 router = APIRouter(prefix="/task", tags=["task"])
 
@@ -125,6 +127,15 @@ def update_task_status(task_id: int, body: StatusIn, db: Session = Depends(get_d
             manager.stop_task(task_id, target_status=body.status)
     if not crud.update_status(db, task_id, body.status):
         return err("任务不存在", code=4004)
+    return ok({"success": True})
+
+
+@router.put("/{task_id}/hyperparams")
+def apply_hyperparams(task_id: int, body: HyperApplyIn, db: Session = Depends(get_db)):
+    """把超参配置应用到指定任务（pending/失败/暂停等非运行态可改）。"""
+    ok_flag, msg = crud.apply_hyperparams(db, task_id, body.hyperparams, body.method)
+    if not ok_flag:
+        return err(msg, code=4003)
     return ok({"success": True})
 
 

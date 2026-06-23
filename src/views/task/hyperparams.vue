@@ -55,7 +55,7 @@
 
           <div class="flex" style="justify-content: flex-end; gap: 8px; margin-top: 16px">
             <el-button @click="saveAsTemplate">保存为模板</el-button>
-            <el-button type="primary" @click="apply">应用配置</el-button>
+            <el-button type="primary" @click="openApply">应用到任务</el-button>
           </div>
         </el-card>
       </el-col>
@@ -73,6 +73,23 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-dialog v-model="applyDialog" title="应用超参到任务" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="目标任务">
+          <el-select v-model="applyTaskId" placeholder="选择待训练/可修改的任务" style="width: 100%" filterable>
+            <el-option v-for="t in applyTasks" :key="t.id" :label="`#${t.id} ${t.name}（${t.status}）`" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="将写入">
+          <pre class="json-preview" style="margin:0">{{ jsonPreview }}</pre>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="applyDialog = false">取消</el-button>
+        <el-button type="primary" :loading="applying" :disabled="!applyTaskId" @click="doApply">应用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -81,6 +98,7 @@ import { ref, reactive, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { saveHyperTemplate } from '@/api/modules/config'
+import { getTaskList, applyHyperparams } from '@/api/modules/task'
 
 const template = ref('')
 const lrExp = ref(-4.7)
@@ -103,8 +121,29 @@ function applyTemplate(v) {
   Object.assign(form, { batchSize: p.batchSize, epochs: p.epochs, optimizer: p.optimizer })
   ElMessage.success('已加载模板')
 }
-function apply() {
-  ElMessage.success('超参配置已应用到当前任务')
+const applyDialog = ref(false)
+const applying = ref(false)
+const applyTaskId = ref(null)
+const applyTasks = ref([])
+
+async function openApply() {
+  // 拉取可修改的任务（非运行/已完成），供选择应用
+  const res = await getTaskList({ page: 1, pageSize: 100 })
+  applyTasks.value = (res.list || []).filter((t) => !['running', 'success'].includes(t.status))
+  applyTaskId.value = null
+  applyDialog.value = true
+}
+async function doApply() {
+  applying.value = true
+  try {
+    await applyHyperparams(applyTaskId.value, {
+      hyperparams: { lr: lrText.value, batchSize: form.batchSize, epochs: form.epochs, optimizer: form.optimizer, maxLen: form.maxLen, warmup: form.warmup }
+    })
+    applyDialog.value = false
+    ElMessage.success('超参已应用到任务')
+  } finally {
+    applying.value = false
+  }
 }
 async function saveAsTemplate() {
   try {

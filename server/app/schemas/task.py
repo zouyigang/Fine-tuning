@@ -45,6 +45,12 @@ class StatusIn(BaseModel):
     status: str
 
 
+class HyperApplyIn(BaseModel):
+    """把超参配置应用到指定任务（hyperparams.vue「应用到任务」）。"""
+    method: str | None = None
+    hyperparams: dict
+
+
 class ScheduleCreateIn(BaseModel):
     """新建批量调度项入参。"""
     name: str

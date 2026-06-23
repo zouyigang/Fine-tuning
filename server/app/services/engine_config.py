@@ -183,9 +183,20 @@ def _lf_data_dir() -> str:
     return os.path.abspath(os.path.join(settings.RUNS_DIR, "_lf_data"))
 
 
+def has_checkpoint(output_dir: str) -> bool:
+    """输出目录是否已有 LF checkpoint（用于断点续训判定）。"""
+    if not output_dir or not os.path.isdir(output_dir):
+        return False
+    return any(d.startswith("checkpoint-") and os.path.isdir(os.path.join(output_dir, d))
+               for d in os.listdir(output_dir))
+
+
 def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
-                     template: str, method: str, hp: dict) -> tuple[str, str]:
-    """生成 LF 训练 YAML，落盘到 RUNS_DIR/{task_id}/，返回 (yaml路径, 输出目录)。"""
+                     template: str, method: str, hp: dict, resume: bool = False) -> tuple[str, str]:
+    """生成 LF 训练 YAML，落盘到 RUNS_DIR/{task_id}/，返回 (yaml路径, 输出目录)。
+
+    resume=True：从 output_dir 已有 checkpoint 续训（不覆盖输出目录）。
+    """
     hp = hp or {}
     run_dir = os.path.abspath(os.path.join(settings.RUNS_DIR, str(task_id)))
     output_dir = os.path.join(run_dir, "output")
@@ -213,7 +224,8 @@ def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
         "logging_steps": int(hp.get("loggingSteps") or 5),
         "save_steps": int(hp.get("saveSteps") or 1000),
         "plot_loss": True,
-        "overwrite_output_dir": True,
+        # 续训时不覆盖输出目录，并从已有 checkpoint 恢复
+        "overwrite_output_dir": not resume,
         "per_device_train_batch_size": per_device,
         "gradient_accumulation_steps": grad_accum,
         "learning_rate": float(hp.get("lr") or 2e-5),
@@ -228,6 +240,8 @@ def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
         cfg["lora_target"] = hp.get("loraTarget") or "all"
     if method == "qlora":
         cfg["quantization_bit"] = 4
+    if resume:
+        cfg["resume_from_checkpoint"] = True
 
     yaml_path = os.path.join(run_dir, "train.yaml")
     with open(yaml_path, "w", encoding="utf-8") as f:

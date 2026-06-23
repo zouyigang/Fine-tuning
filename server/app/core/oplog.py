@@ -14,6 +14,7 @@ from app.models.user import User
 _RULES = [
     ("POST", r"^/api/task$", "微调任务", "创建微调任务"),
     ("PUT", r"^/api/task/\d+/status$", "微调任务", "变更任务状态"),
+    ("PUT", r"^/api/task/\d+/hyperparams$", "微调任务", "应用超参到任务"),
     ("POST", r"^/api/task/schedule$", "微调任务", "新建批量调度"),
     ("PUT", r"^/api/task/schedule/reorder$", "微调任务", "调整调度顺序"),
     ("DELETE", r"^/api/task/schedule/\d+$", "微调任务", "移除调度项"),

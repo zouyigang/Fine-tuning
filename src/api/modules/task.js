@@ -19,6 +19,11 @@ export function updateTaskStatus(id, status) {
   return service.put(`/task/${id}/status`, { status })
 }
 
+// 把超参配置应用到指定任务（payload: { method?, hyperparams }）
+export function applyHyperparams(id, payload) {
+  return service.put(`/task/${id}/hyperparams`, payload)
+}
+
 // 实时监控：当前运行中任务的指标
 export function getRunningTask() {
   return service.get('/task/running')
