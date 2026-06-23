@@ -51,6 +51,12 @@ class VersionOut(BaseModel):
     time: str | None = None
 
 
+class VersionCreateIn(BaseModel):
+    datasetId: int
+    desc: str | None = None
+    version: str | None = None  # 不传则自动顺延版本号
+
+
 class RuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

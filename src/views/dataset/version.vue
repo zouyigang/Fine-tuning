@@ -15,6 +15,7 @@
           <el-button type="primary" :icon="DocumentCopy" :disabled="checked.length !== 2" @click="compareDialog = true">
             版本对比{{ checked.length === 2 ? '' : '（选两个版本）' }}
           </el-button>
+          <el-button type="success" :icon="Plus" @click="newDialog = true">新建版本</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -55,6 +56,21 @@
       </el-timeline>
     </el-card>
 
+    <el-dialog v-model="newDialog" title="新建版本" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="版本号">
+          <el-input v-model="newForm.version" placeholder="留空则自动顺延（如 v1.1）" />
+        </el-form-item>
+        <el-form-item label="变更说明">
+          <el-input v-model="newForm.desc" type="textarea" :rows="3" placeholder="描述本次版本的变更内容" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="newDialog = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="createVersion">确认创建</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="compareDialog" title="版本对比" width="700px">
       <el-descriptions :column="2" border>
         <el-descriptions-item label="对比版本">{{ checked[0] }} ↔ {{ checked[1] }}</el-descriptions-item>
@@ -70,19 +86,35 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { DocumentCopy } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted } from 'vue'
+import { DocumentCopy, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getDatasetVersions, rollbackDatasetVersion } from '@/api/modules/dataset'
+import { getDatasetVersions, rollbackDatasetVersion, createDatasetVersion } from '@/api/modules/dataset'
 
 const datasetId = ref(1)
 const versions = ref([])
 const checked = ref([])
 const compareDialog = ref(false)
+const newDialog = ref(false)
+const creating = ref(false)
+const newForm = reactive({ version: '', desc: '' })
 
 async function load() {
   versions.value = await getDatasetVersions(datasetId.value)
+}
+async function createVersion() {
+  creating.value = true
+  try {
+    const v = await createDatasetVersion({ datasetId: datasetId.value, desc: newForm.desc, version: newForm.version || undefined })
+    newDialog.value = false
+    newForm.version = ''
+    newForm.desc = ''
+    ElMessage.success(`已创建版本 ${v.version}`)
+    await load()
+  } finally {
+    creating.value = false
+  }
 }
 async function rollback(v) {
   await ElMessageBox.confirm(`确认将数据集回滚至 ${v.version}？当前版本将保留为历史版本。`, '版本回滚', { type: 'warning' })

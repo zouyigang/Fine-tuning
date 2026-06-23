@@ -61,6 +61,11 @@ export function getDatasetVersions(datasetId) {
   return service.get('/dataset/versions', { params: { datasetId } })
 }
 
+// 新建数据集版本（payload: { datasetId, desc, version? }；version 不传则自动顺延）
+export function createDatasetVersion(payload) {
+  return service.post('/dataset/versions', payload)
+}
+
 // 数据集版本回滚（置为当前版本）
 export function rollbackDatasetVersion(versionId) {
   return service.post(`/dataset/versions/${versionId}/rollback`)

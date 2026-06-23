@@ -23,6 +23,7 @@ _RULES = [
     ("POST", r"^/api/dataset/desensitize-rules$", "数据集管理", "新增脱敏规则"),
     ("PUT", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "切换脱敏规则"),
     ("POST", r"^/api/dataset/desensitize/run$", "数据集管理", "执行数据脱敏"),
+    ("POST", r"^/api/dataset/versions$", "数据集管理", "新建数据集版本"),
     ("POST", r"^/api/dataset/versions/\d+/rollback$", "数据集管理", "数据集版本回滚"),
     ("PUT", r"^/api/dataset/annotation-tasks/\d+/progress$", "数据集管理", "提交标注进度"),
     ("POST", r"^/api/dataset/permissions$", "数据集管理", "保存数据集权限"),

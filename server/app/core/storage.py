@@ -75,6 +75,67 @@ def count_rows(abspath: str) -> int:
         return 0
 
 
+def validate_dataset(abspath: str) -> tuple[bool, str, int]:
+    """按后缀校验数据集文件结构是否合法，返回 (是否合法, 提示信息, 样本量)。
+
+    - .json  : 必须是 JSON 数组，或含数组值的对象（如 {"data": [...]}）；
+    - .jsonl : 每个非空行必须是合法 JSON 对象；
+    - .csv   : 至少含表头 + 1 行数据；
+    - .txt   : 至少 1 行非空文本。
+    解析失败/结构不符返回 (False, 原因, 0)，便于上传接口如实拒绝。
+    """
+    import json
+    low = abspath.lower()
+    try:
+        if low.endswith(".json"):
+            with open(abspath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                if not data:
+                    return False, "JSON 数组为空，无有效样本", 0
+                return True, "", len(data)
+            if isinstance(data, dict):
+                for v in data.values():
+                    if isinstance(v, list):
+                        return (True, "", len(v)) if v else (False, "数据数组为空，无有效样本", 0)
+                return False, "JSON 对象中未找到样本数组（应为数组或 {\"data\": [...]}）", 0
+            return False, "JSON 顶层必须是数组或对象", 0
+
+        if low.endswith(".jsonl"):
+            count = 0
+            with open(abspath, "r", encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    s = line.strip()
+                    if not s:
+                        continue
+                    try:
+                        json.loads(s)
+                    except Exception:
+                        return False, f"第 {i} 行不是合法 JSON", 0
+                    count += 1
+            return (True, "", count) if count else (False, "文件无有效样本行", 0)
+
+        if low.endswith(".csv"):
+            rows = 0
+            with open(abspath, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.strip():
+                        rows += 1
+            if rows < 2:
+                return False, "CSV 至少需包含表头 + 1 行数据", 0
+            return True, "", rows - 1  # 扣除表头
+
+        # .txt 及其他：按非空行计数
+        count = count_rows(abspath)
+        return (True, "", count) if count else (False, "文件无有效内容", 0)
+    except UnicodeDecodeError:
+        return False, "文件编码非 UTF-8，无法解析", 0
+    except json.JSONDecodeError as e:
+        return False, f"JSON 解析失败：{e.msg}", 0
+    except Exception as e:
+        return False, f"文件解析失败：{e}", 0
+
+
 def human_size(n: int) -> str:
     """字节数转可读字符串。"""
     size = float(n)

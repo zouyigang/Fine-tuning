@@ -1,4 +1,6 @@
 """数据集模块数据库读写。"""
+import re
+
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -111,6 +113,47 @@ def run_desensitize(db: Session, dataset_id: int):
     ds.desensitized = True
     db.commit()
     return True, (ds.total or 0)
+
+
+def _next_version(versions: list[DatasetVersion]) -> str:
+    """根据已有版本号推断下一个版本号（vX.Y → 次版本号 +1）。"""
+    max_major, max_minor = 1, 0
+    for v in versions:
+        m = re.match(r"v?(\d+)\.(\d+)", str(v.version or ""))
+        if not m:
+            continue
+        major, minor = int(m.group(1)), int(m.group(2))
+        if (major, minor) > (max_major, max_minor):
+            max_major, max_minor = major, minor
+    return f"v{max_major}.{max_minor + 1}"
+
+
+def create_version(db: Session, dataset_id: int, desc: str, author: str,
+                   version: str | None = None) -> DatasetVersion | None:
+    """新建数据集版本：自动顺延版本号、置为当前版本、同步主表版本与样本量。"""
+    ds = db.get(Dataset, dataset_id)
+    if not ds:
+        return None
+    existing = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.dataset_id == dataset_id)
+    ).all()
+    new_version = version or _next_version(existing)
+    for o in existing:
+        o.current = False
+    v = DatasetVersion(
+        dataset_id=dataset_id,
+        version=new_version,
+        desc=desc or f"新建版本 {new_version}",
+        author=author or "-",
+        count=ds.total or 0,
+        current=True,
+        time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    db.add(v)
+    ds.version = new_version
+    db.commit()
+    db.refresh(v)
+    return v
 
 
 def rollback_version(db: Session, version_id: int) -> bool:

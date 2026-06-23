@@ -78,8 +78,9 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import { saveHyperTemplate } from '@/api/modules/config'
 
 const template = ref('')
 const lrExp = ref(-4.7)
@@ -105,8 +106,26 @@ function applyTemplate(v) {
 function apply() {
   ElMessage.success('超参配置已应用到当前任务')
 }
-function saveAsTemplate() {
-  ElMessage.success('已保存为超参模板')
+async function saveAsTemplate() {
+  try {
+    const { value: name } = await ElMessageBox.prompt('请输入模板名称', '保存为超参模板', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputPattern: /\S+/,
+      inputErrorMessage: '模板名称不能为空'
+    })
+    await saveHyperTemplate({
+      name,
+      scene: '自定义',
+      lr: lrText.value,
+      batchSize: form.batchSize,
+      epochs: form.epochs,
+      optimizer: form.optimizer
+    })
+    ElMessage.success('已保存为超参模板，可在「配置管理 → 超参模板」中查看')
+  } catch (e) {
+    /* 用户取消 prompt 时静默 */
+  }
 }
 </script>
 

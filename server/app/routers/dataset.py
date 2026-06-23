@@ -9,10 +9,13 @@ from app.core import storage
 from app.core.database import get_db
 from app.core.response import ok, err, page
 from app.crud import dataset as crud
+from app.deps import get_current_user
+from app.models.user import User
 from app.schemas.dataset import (
     DatasetOut,
     DatasetCreate,
     VersionOut,
+    VersionCreateIn,
     RuleOut,
     AnnotationOut,
     PermissionOut,
@@ -93,7 +96,15 @@ async def upload_dataset_file(file: UploadFile = File(...), db: Session = Depend
     if not data:
         return err("文件内容为空", code=4001)
     stored, abspath, size = storage.save_bytes("datasets", name, data)
-    rows = storage.count_rows(abspath)
+    valid, msg, rows = storage.validate_dataset(abspath)
+    if not valid:
+        # 校验不通过：删除已落盘文件，避免残留
+        try:
+            import os
+            os.remove(abspath)
+        except OSError:
+            pass
+        return err(f"文件格式校验失败：{msg}", code=4001)
     rec = crud.save_dataset_file(db, file_name=name, stored_name=stored, size=size, rows=rows)
     return ok(UploadOut(
         fileId=rec.id, fileName=name, size=size,
@@ -120,6 +131,19 @@ def run_desensitize(body: DesensitizeRunIn, db: Session = Depends(get_db)):
     if not ok_flag:
         return err("数据集不存在", code=4004)
     return ok({"success": True, "count": count})
+
+
+@router.post("/versions")
+def create_dataset_version(
+    body: VersionCreateIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    author = current.real_name or current.username
+    v = crud.create_version(db, body.datasetId, body.desc or "", author, body.version)
+    if not v:
+        return err("数据集不存在", code=4004)
+    return ok(VersionOut.model_validate(v))
 
 
 @router.post("/versions/{version_id}/rollback")

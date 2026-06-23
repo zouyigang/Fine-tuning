@@ -1,6 +1,7 @@
 """微调任务管理接口，路径与前端 src/api/modules/task.js 对应。"""
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from app.core.database import get_db
 from app.core.response import ok, err, page
@@ -59,6 +60,24 @@ def get_task_logs(
         taskId = t.id if t else 1
     logs = crud.get_logs(db, taskId, level, keyword)
     return ok([{"id": l.id, "time": l.time, "level": l.level, "msg": l.msg} for l in logs])
+
+
+@router.get("/{task_id}/logs/download")
+def download_task_logs(
+    task_id: int,
+    level: str = "",
+    keyword: str = "",
+    db: Session = Depends(get_db),
+):
+    """导出指定任务的训练日志为 .log 纯文本文件（可按级别/关键字过滤）。"""
+    logs = crud.get_logs(db, task_id, level, keyword)
+    lines = [f"{l.time} [{l.level}] {l.msg}" for l in logs]
+    content = ("\n".join(lines) + "\n") if lines else "暂无日志\n"
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="train-task-{task_id}.log"'},
+    )
 
 
 @router.get("/schedule")

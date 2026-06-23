@@ -43,7 +43,7 @@ import { ref, reactive, onMounted, nextTick } from 'vue'
 import { Search, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getTaskLogs } from '@/api/modules/task'
+import { getTaskLogs, downloadTaskLogs } from '@/api/modules/task'
 
 const taskId = ref(1)
 const logs = ref([])
@@ -55,8 +55,13 @@ async function load() {
   logs.value = await getTaskLogs(query)
   if (autoScroll.value) nextTick(() => logBox.value && (logBox.value.scrollTop = logBox.value.scrollHeight))
 }
-function download() {
-  ElMessage.success('日志已开始下载（train-20260608.log）')
+async function download() {
+  try {
+    const name = await downloadTaskLogs(taskId.value, { level: query.level, keyword: query.keyword })
+    ElMessage.success(`日志已下载（${name}）`)
+  } catch (e) {
+    /* 错误提示已在 downloadFile 内统一处理 */
+  }
 }
 onMounted(load)
 </script>

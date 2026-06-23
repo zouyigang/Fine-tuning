@@ -1,4 +1,5 @@
 import service from '@/api/request'
+import { downloadFile } from '@/utils/download'
 
 /**
  * 微调任务管理接口（已对接后端 FastAPI）。
@@ -36,6 +37,14 @@ export function getResourceUsage() {
 // 训练日志
 export function getTaskLogs(params = {}) {
   return service.get('/task/logs', { params })
+}
+
+// 下载训练日志为 .log 文件（params: { level, keyword }）
+export function downloadTaskLogs(taskId, params = {}) {
+  return downloadFile(`/task/${taskId}/logs/download`, {
+    params,
+    fallback: `train-task-${taskId}.log`
+  })
 }
 
 // 批量调度队列
