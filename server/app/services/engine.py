@@ -302,9 +302,18 @@ class TrainingManager:
             # 进程已退出：再收一次尾部指标
             seen = self._drain_metrics(db, task_id, log_path, seen)
         except Exception as e:
-            _log(db, task_id, "ERROR", f"监控异常: {e}")
+            try:
+                db.rollback()
+                _log(db, task_id, "ERROR", f"监控异常: {e}")
+            except Exception:
+                pass
         finally:
             db.close()
+        # 无论监控是否异常，都必须回收子进程并收尾，否则任务永卡 running + 僵尸进程
+        try:
+            proc.wait(timeout=10)
+        except Exception:
+            pass
         code = proc.returncode
         with self._lock:
             self._running.pop(task_id, None)
@@ -348,9 +357,21 @@ class TrainingManager:
                     t.loss = str(round(float(loss), 4))
                 if pct is not None:
                     t.progress = min(99, int(pct))
-                if rec.get("epoch") is not None:
-                    t.epoch = f"{rec.get('epoch')}"
-        db.commit()
+                ep = rec.get("epoch")
+                if ep is not None:
+                    # epoch 列仅 VARCHAR(16)，LF 给的浮点 epoch（如 7.666666666666667）
+                    # 原样写入会触发 DataError(1406) Data too long，进而拖垮整个监控线程，
+                    # 导致任务永卡 running + 子进程僵尸不回收。故统一压成 2 位小数。
+                    try:
+                        t.epoch = f"{float(ep):.2f}"
+                    except (TypeError, ValueError):
+                        t.epoch = str(ep)[:16]
+        try:
+            db.commit()
+        except Exception:
+            # 单批指标写失败不致命：回滚保持会话可用，下个轮询周期重试
+            db.rollback()
+            return seen
         return len(lines)
 
     # ---- 收尾 ----

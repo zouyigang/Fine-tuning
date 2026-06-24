@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.task import TrainTask, TrainMetric, TrainLog, ScheduleItem
 
 TOTAL_STEPS = 20000
@@ -79,10 +80,21 @@ def get_metrics(db: Session, task_id: int):
 
 
 def current_running(db: Session) -> TrainTask | None:
-    """当前监控目标：指标点最多的运行中任务（稳定指向常驻演示任务）。"""
+    """当前监控目标。
+
+    real 模式：优先指向有真实运行支撑（pid 或 output_dir）的最新运行中任务，
+    避免被种子演示任务（指标点多但无真实进程）抢占监控页。
+    sim 模式：保持原行为——取指标点最多的运行中任务（稳定指向常驻演示任务）。
+    """
     running = db.scalars(select(TrainTask).where(TrainTask.status == "running")).all()
     if not running:
         return None
+    if settings.ENGINE_MODE == "real":
+        # real 模式只认有真实运行支撑的任务，绝不回退到种子演示任务（否则监控页
+        # 会一直显示静态种子曲线）。没有真实任务在跑时返回 None，前端显示「无运行任务」。
+        real = [t for t in running if getattr(t, "pid", None) or getattr(t, "outputDir", None)]
+        real.sort(key=lambda t: t.id, reverse=True)
+        return real[0] if real else None
     running.sort(key=lambda t: (metric_count(db, t.id), t.id), reverse=True)
     return running[0]
 

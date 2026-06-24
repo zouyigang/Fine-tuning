@@ -59,6 +59,7 @@ let timer = null
 
 async function refresh() {
   task.value = await getRunningTask()
+  Object.assign(curve, await getTrainingCurve())
   Object.assign(resource, await getResourceUsage())
 }
 

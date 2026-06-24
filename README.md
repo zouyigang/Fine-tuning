@@ -141,14 +141,26 @@ python -c "from modelscope import snapshot_download; snapshot_download('Qwen/Qwe
 
 ### 2. 启动（GPU 叠加配置）
 
-在**仓库根目录**执行（把 GPU override 叠加在主 compose 上）：
+在**仓库根目录**执行（把 GPU override 叠加在主 compose 上）。`MODELS_DIR` 指向上一步的模型根目录（不设则默认 `./models`）。**注意行内设环境变量的写法各 shell 不同**：
+
+```powershell
+# Windows PowerShell（先设变量，再启动；变量仅当前会话有效）
+$env:MODELS_DIR = "d:/models"
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+```bat
+:: Windows cmd.exe（必须 set 单独一行，cmd 不支持 VAR=val 行内前缀）
+set MODELS_DIR=d:/models
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
 
 ```bash
-# MODELS_DIR 指向上一步的模型根目录（默认 ./models）
+# Linux / macOS（bash 支持行内前缀）
 MODELS_DIR=./models docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
-- 它把 backend 换成 CUDA 镜像（`server/Dockerfile.cuda`：torch 2.12.1+cu132 + LLaMA-Factory 0.9.5）、置 `ENGINE_MODE=real`、`gpus: all`，并把宿主 `${MODELS_DIR}` 只读挂载到容器 `/data/models`。
+- 它把 backend 换成 CUDA 镜像（`server/Dockerfile.cuda`：torch/torchaudio/torchvision 2.11.0+cu130 + LLaMA-Factory 0.9.5）、置 `ENGINE_MODE=real`、`gpus: all`，并把宿主 `${MODELS_DIR}` 只读挂载到容器 `/data/models`。
 - 首次构建会拉 torch（较大），耐心等。前端 / MySQL / 端口与默认一致。
 
 ### 3. 跑一次真实微调

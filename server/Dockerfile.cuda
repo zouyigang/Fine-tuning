@@ -10,8 +10,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 1) torch（CUDA 13.2，支持 Blackwell；wheel 自带 CUDA+cuDNN，宿主只需驱动）
-RUN pip install torch==2.12.1 --index-url https://download.pytorch.org/whl/cu132
+# 1) torch 全家桶（CUDA 13.0，支持 Blackwell/sm_120；wheel 自带 CUDA+cuDNN，宿主只需驱动）
+#    必须 torch / torchaudio / torchvision 同版本、同 CUDA 源——否则 llamafactory 启动时
+#    无条件 import torchaudio 会因 CUDA 版本不一致直接报错退出。torchaudio 目前最高 2.11.0，
+#    cu132 源也没有 torchaudio；故整套锁 2.11.0+cu130（与本机已验证跑通 Qwen3 的配置一致）。
+RUN pip install torch==2.11.0 torchaudio==2.11.0 torchvision==0.26.0 \
+        --index-url https://download.pytorch.org/whl/cu130
 
 # 2) LLaMA-Factory（真实训练引擎，锁定正式版）
 RUN pip install llamafactory==0.9.5
