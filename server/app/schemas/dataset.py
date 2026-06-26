@@ -1,5 +1,5 @@
 """数据集模块出入参 Schema（Pydantic v2）。字段与前端保持一致。"""
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DatasetOut(BaseModel):
@@ -15,6 +15,7 @@ class DatasetOut(BaseModel):
     version: str | None = None
     desensitized: bool | None = False
     status: str | None = None
+    stage: str | None = None
     owner: str | None = None
     updatedAt: str | None = None
 
@@ -65,12 +66,15 @@ class RuleOut(BaseModel):
     rule: str
     sample: str
     enabled: bool
+    maskType: str | None = "custom"
+    pattern: str | None = None
 
 
 class AnnotationOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
+    datasetId: int | None = Field(default=None, validation_alias="dataset_id")
     title: str
     type: str | None = None
     total: int | None = 0
@@ -110,6 +114,8 @@ class RuleCreateIn(BaseModel):
     rule: str | None = "自定义掩码"
     sample: str | None = "****"
     enabled: bool | None = True
+    maskType: str | None = "custom"   # idcard/phone/bankcard/name/email/custom
+    pattern: str | None = None        # custom 时的正则
 
 
 class RuleToggleIn(BaseModel):
@@ -120,5 +126,50 @@ class DesensitizeRunIn(BaseModel):
     datasetId: int
 
 
+class DesensitizePreviewIn(BaseModel):
+    text: str | None = ""
+
+
 class AnnotationProgressIn(BaseModel):
     done: int
+
+
+class AnnotationReviewIn(BaseModel):
+    approved: bool
+
+
+class DatasetTypeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    value: str | None = None
+    label: str | None = None
+    seq: int | None = 0
+    enabled: bool | None = True
+
+
+class DatasetTypeIn(BaseModel):
+    id: int | None = None
+    value: str
+    label: str
+    seq: int | None = 0
+    enabled: bool | None = True
+
+
+class DatasetTypeStatusIn(BaseModel):
+    enabled: bool
+
+
+class SampleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    idx: int | None = 0
+    raw: dict | None = None
+    labeled: dict | None = None
+    masked: dict | None = None
+    status: str | None = "待标注"
+
+
+class SampleLabelIn(BaseModel):
+    labeled: dict

@@ -108,6 +108,18 @@ def remove_schedule_item(item_id: int, db: Session = Depends(get_db)):
 
 @router.post("")
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
+    # 闭环：只允许用「已发布」的数据集训练（已完成 标注→脱敏→发布，数据已脱敏且转成训练样本）。
+    # 仅当引用到真实数据集行时校验；解析不到（自由文本/演示）放行，不破坏 sim 演示。
+    from app.crud import dataset as ds_crud
+    ds = ds_crud.resolve_for_training(db, payload.dataset)
+    if ds is not None and ds.stage != "已发布":
+        return err(f"数据集「{ds.name}」尚未发布（当前阶段：{ds.stage or '待标注'}），"
+                   f"请先完成 标注→脱敏→发布 再用于训练", code=4001)
+    # 双保险：数据集类型须与业务模型类型匹配（前端已过滤下拉，此处防接口直接绕过）
+    mismatch, exp_label, act_label = ds_crud.model_dataset_type_mismatch(db, payload.modelType, ds)
+    if mismatch:
+        return err(f"业务模型「{payload.modelType}」需要「{exp_label}」类型的数据集，"
+                   f"但所选「{ds.name}」是「{act_label}」类型，请重新选择匹配的数据集", code=4001)
     item = crud.create_task(db, payload.model_dump(exclude_none=True))
     return ok(TaskOut.model_validate(item))
 
@@ -136,6 +148,15 @@ def apply_hyperparams(task_id: int, body: HyperApplyIn, db: Session = Depends(ge
     ok_flag, msg = crud.apply_hyperparams(db, task_id, body.hyperparams, body.method)
     if not ok_flag:
         return err(msg, code=4003)
+    return ok({"success": True})
+
+
+@router.delete("/{task_id}")
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    """删除训练任务（运行中/已产出模型版本的任务拒删；级联清理指标/日志/产物/调度项）。"""
+    ok_flag, msg = crud.delete_task(db, task_id)
+    if not ok_flag:
+        return err(msg, code=4001)
     return ok({"success": True})
 
 

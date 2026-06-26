@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
@@ -101,7 +101,7 @@ async function save() {
   ElMessage.success('资源配额已保存')
   Object.assign(data, await getResourceQuotas())
 }
-onMounted(async () => Object.assign(data, await getResourceQuotas()))
+onActivated(async () => Object.assign(data, await getResourceQuotas()))
 </script>
 
 <style lang="scss" scoped>

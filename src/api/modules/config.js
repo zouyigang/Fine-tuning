@@ -60,3 +60,25 @@ export function saveRolePermissions(matrix = {}) {
   }))
   return service.post('/config/role-permissions', { roles })
 }
+
+// 数据转换规则（业务原始数据 → alpaca 指令样本）
+export function getConvertRules() {
+  return service.get('/config/convert-rules')
+}
+
+export function saveConvertRule(payload) {
+  return service.post('/config/convert-rules', payload)
+}
+
+export function setConvertRuleStatus(id, enabled) {
+  return service.put(`/config/convert-rules/${id}/status`, { enabled })
+}
+
+export function deleteConvertRule(id) {
+  return service.delete(`/config/convert-rules/${id}`)
+}
+
+// 试转换：sample 为原始样本（JSON 对象/数组/JSONL），dsType 决定命中哪些规则
+export function previewConvert(sample, dsType) {
+  return service.post('/config/convert-rules/preview', { sample, dsType })
+}

@@ -15,6 +15,7 @@ _RULES = [
     ("POST", r"^/api/task$", "微调任务", "创建微调任务"),
     ("PUT", r"^/api/task/\d+/status$", "微调任务", "变更任务状态"),
     ("PUT", r"^/api/task/\d+/hyperparams$", "微调任务", "应用超参到任务"),
+    ("DELETE", r"^/api/task/\d+$", "微调任务", "删除微调任务"),
     ("POST", r"^/api/task/schedule$", "微调任务", "新建批量调度"),
     ("PUT", r"^/api/task/schedule/reorder$", "微调任务", "调整调度顺序"),
     ("DELETE", r"^/api/task/schedule/\d+$", "微调任务", "移除调度项"),
@@ -23,11 +24,19 @@ _RULES = [
     ("DELETE", r"^/api/dataset/\d+$", "数据集管理", "删除数据集"),
     ("POST", r"^/api/dataset/desensitize-rules$", "数据集管理", "新增脱敏规则"),
     ("PUT", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "切换脱敏规则"),
+    ("DELETE", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "删除脱敏规则"),
     ("POST", r"^/api/dataset/desensitize/run$", "数据集管理", "执行数据脱敏"),
+    ("POST", r"^/api/dataset/\d+/publish$", "数据集管理", "发布数据集"),
     ("POST", r"^/api/dataset/versions$", "数据集管理", "新建数据集版本"),
     ("POST", r"^/api/dataset/versions/\d+/rollback$", "数据集管理", "数据集版本回滚"),
     ("PUT", r"^/api/dataset/annotation-tasks/\d+/progress$", "数据集管理", "提交标注进度"),
+    ("PUT", r"^/api/dataset/samples/\d+$", "数据集管理", "保存样本标注"),
+    ("PUT", r"^/api/dataset/annotation-tasks/\d+/review$", "数据集管理", "复核标注任务"),
+    ("DELETE", r"^/api/dataset/annotation-tasks/\d+$", "数据集管理", "删除标注任务"),
     ("POST", r"^/api/dataset/permissions$", "数据集管理", "保存数据集权限"),
+    ("POST", r"^/api/dataset/types$", "数据集管理", "保存数据集类型"),
+    ("PUT", r"^/api/dataset/types/\d+/status$", "数据集管理", "启停数据集类型"),
+    ("DELETE", r"^/api/dataset/types/\d+$", "数据集管理", "删除数据集类型"),
     ("PUT", r"^/api/model/\d+/status$", "模型版本", "变更模型状态"),
     ("POST", r"^/api/model/gray-releases$", "模型版本", "创建灰度发布"),
     ("PUT", r"^/api/model/gray-releases/\d+/traffic$", "模型版本", "调整灰度流量"),
@@ -46,6 +55,9 @@ _RULES = [
     ("POST", r"^/api/config/role-permissions$", "微调配置", "保存角色权限"),
     ("POST", r"^/api/config/resource-quotas$", "微调配置", "保存资源配额"),
     ("POST", r"^/api/config/autotune$", "微调配置", "保存自动调优配置"),
+    ("POST", r"^/api/config/convert-rules$", "微调配置", "保存数据转换规则"),
+    ("PUT", r"^/api/config/convert-rules/\d+/status$", "微调配置", "启停数据转换规则"),
+    ("DELETE", r"^/api/config/convert-rules/\d+$", "微调配置", "删除数据转换规则"),
     ("POST", r"^/api/user$", "用户管理", "创建用户"),
     ("PUT", r"^/api/user/\d+/status$", "用户管理", "启用/禁用用户"),
     ("POST", r"^/api/user/\d+/reset-password$", "用户管理", "重置密码"),
@@ -95,6 +107,8 @@ def record(db, *, username, real_name, module, action, method, path, ip, status,
 
 # 仅记录这些写操作（GET 只读不记）
 _LOG_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+# 这些写方法路径实为只读（如试转换预览），不计入审计
+_SKIP_PATHS = {"/api/auth/login", "/api/config/convert-rules/preview", "/api/dataset/desensitize/preview"}
 
 
 async def operation_log_middleware(request, call_next):
@@ -108,7 +122,7 @@ async def operation_log_middleware(request, call_next):
 
     path = request.url.path
     method = request.method.upper()
-    if not (path.startswith("/api") and method in _LOG_METHODS and path != "/api/auth/login"):
+    if not (path.startswith("/api") and method in _LOG_METHODS and path not in _SKIP_PATHS):
         return response
 
     # body_iterator 只能消费一次，读出后需用相同内容重建响应

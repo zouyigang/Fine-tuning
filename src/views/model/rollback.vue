@@ -50,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onActivated } from 'vue'
 import { RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -77,7 +77,7 @@ async function rollback(row) {
   ElMessage.success(`已回滚至 ${row.version}，回滚记录已写入审计日志`)
   await load()
 }
-onMounted(load)
+onActivated(load)
 </script>
 
 <style lang="scss" scoped>

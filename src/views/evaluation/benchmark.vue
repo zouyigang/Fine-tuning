@@ -42,13 +42,13 @@
 </template>
 
 <script setup>
-import { reactive, computed, onMounted } from 'vue'
+import { reactive, computed, onActivated } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
 import { getBenchmark } from '@/api/modules/evaluation'
 
 const data = reactive({ dims: [], models: [], compare: [] })
-onMounted(async () => Object.assign(data, await getBenchmark()))
+onActivated(async () => Object.assign(data, await getBenchmark()))
 
 const radarOption = computed(() => ({
   tooltip: {},

@@ -23,8 +23,15 @@ from app.schemas.dataset import (
     RuleCreateIn,
     RuleToggleIn,
     DesensitizeRunIn,
+    DesensitizePreviewIn,
     AnnotationProgressIn,
+    AnnotationReviewIn,
     UploadOut,
+    DatasetTypeOut,
+    DatasetTypeIn,
+    DatasetTypeStatusIn,
+    SampleOut,
+    SampleLabelIn,
 )
 
 # 允许的上传文件后缀与大小上限（与前端提示一致：单文件 ≤ 500MB）
@@ -39,12 +46,43 @@ def get_dataset_list(
     keyword: str = "",
     type: str = "",
     status: str = "",
+    stage: str = "",
     page_no: int = Query(1, alias="page"),
     page_size: int = Query(10, alias="pageSize"),
     db: Session = Depends(get_db),
 ):
-    items, total = crud.list_datasets(db, keyword, type, status, page_no, page_size)
+    items, total = crud.list_datasets(db, keyword, type, status, stage, page_no, page_size)
     return ok(page([DatasetOut.model_validate(x) for x in items], total, page_no, page_size))
+
+
+@router.get("/types")
+def get_dataset_types(enabledOnly: bool = True, db: Session = Depends(get_db)):
+    """数据集类型字典。enabledOnly=true（默认）供导入下拉/规则表单读启用项；
+    管理页传 enabledOnly=false 取全部。"""
+    rows = crud.list_dataset_types(db, enabled_only=enabledOnly)
+    return ok([DatasetTypeOut.model_validate(r) for r in rows])
+
+
+@router.post("/types")
+def save_dataset_type(payload: DatasetTypeIn, db: Session = Depends(get_db)):
+    ok_flag, msg = crud.save_dataset_type(db, payload.model_dump(exclude_none=True))
+    if not ok_flag:
+        return err(msg, code=4001)
+    return ok({"success": True})
+
+
+@router.put("/types/{type_id}/status")
+def set_dataset_type_status(type_id: int, body: DatasetTypeStatusIn, db: Session = Depends(get_db)):
+    crud.set_dataset_type_status(db, type_id, body.enabled)
+    return ok({"success": True})
+
+
+@router.delete("/types/{type_id}")
+def delete_dataset_type(type_id: int, db: Session = Depends(get_db)):
+    ok_flag, msg = crud.delete_dataset_type(db, type_id)
+    if not ok_flag:
+        return err(msg, code=4001)
+    return ok({"success": True})
 
 
 @router.get("/desensitize-rules")
@@ -125,6 +163,19 @@ def toggle_desensitize_rule(rule_id: int, body: RuleToggleIn, db: Session = Depe
     return ok({"success": True})
 
 
+@router.delete("/desensitize-rules/{rule_id}")
+def delete_desensitize_rule(rule_id: int, db: Session = Depends(get_db)):
+    if not crud.delete_rule(db, rule_id):
+        return err("脱敏规则不存在", code=4004)
+    return ok({"success": True})
+
+
+@router.post("/desensitize/preview")
+def preview_desensitize(body: DesensitizePreviewIn, db: Session = Depends(get_db)):
+    """试脱敏：用当前启用规则对文本脱敏（只读，不落库），供脱敏对比预览。"""
+    return ok({"masked": crud.preview_desensitize(db, body.text)})
+
+
 @router.post("/desensitize/run")
 def run_desensitize(body: DesensitizeRunIn, db: Session = Depends(get_db)):
     ok_flag, count = crud.run_desensitize(db, body.datasetId)
@@ -160,10 +211,74 @@ def update_annotation_progress(task_id: int, body: AnnotationProgressIn, db: Ses
     return ok({"success": True})
 
 
+@router.put("/annotation-tasks/{task_id}/review")
+def review_annotation(task_id: int, body: AnnotationReviewIn, db: Session = Depends(get_db)):
+    """复核标注任务：通过→已完成（数据集进「已标注」可脱敏）；退回→重标。"""
+    ok_flag, msg = crud.review_annotation(db, task_id, body.approved)
+    if not ok_flag:
+        return err(msg, code=4001)
+    return ok({"success": True})
+
+
+@router.delete("/annotation-tasks/{task_id}")
+def delete_annotation_task(task_id: int, db: Session = Depends(get_db)):
+    """删除标注任务（无下游外键，仅删跟踪行）。"""
+    if not crud.delete_annotation_task(db, task_id):
+        return err("标注任务不存在", code=4004)
+    return ok({"success": True})
+
+
 @router.post("/permissions")
 def save_permissions(payload: PermissionSaveIn, db: Session = Depends(get_db)):
     updated = crud.save_permissions(db, [i.model_dump() for i in payload.items])
     return ok({"updated": updated})
+
+
+@router.put("/samples/{sample_id}")
+def save_sample_label(sample_id: int, body: SampleLabelIn, db: Session = Depends(get_db)):
+    """保存一条样本的标注结果（写 labeled、置已标注、重算进度）。"""
+    ok_flag, msg = crud.save_sample_label(db, sample_id, body.labeled)
+    if not ok_flag:
+        return err(msg, code=4004 if msg == "样本不存在" else 4001)
+    return ok({"success": True})
+
+
+@router.get("/{ds_id}/train-data/download")
+def download_train_data(ds_id: int, variant: str = "", db: Session = Depends(get_db)):
+    """下载该数据集最终训练数据文件（发布后为 alpaca jsonl）。
+
+    variant=ner/relation 时下载对应子类型训练文件（如「实体关系标注」分别产出的
+    命名实体 / 关系三元组）；不传或该子类型不存在时回退最新训练文件。
+    """
+    rec = crud.train_file_by_variant(db, ds_id, variant) if variant else None
+    if rec is None:
+        rec = crud.latest_dataset_file(db, ds_id)
+    if not rec:
+        return err("该数据集暂无可下载文件（请先发布）", code=4004)
+    abspath = storage.abspath_of("datasets", rec.storedName)
+    return storage.file_response(abspath, rec.fileName or f"dataset-{ds_id}.jsonl", "application/jsonl")
+
+
+@router.get("/{ds_id}/samples")
+def get_dataset_samples(
+    ds_id: int,
+    page_no: int = Query(1, alias="page"),
+    page_size: int = Query(10, alias="pageSize"),
+    db: Session = Depends(get_db),
+):
+    """逐样本列表（标注页用），含 raw/labeled/masked/status。"""
+    items, total = crud.list_samples(db, ds_id, page_no, page_size)
+    return ok(page([SampleOut.model_validate(x) for x in items], total, page_no, page_size))
+
+
+@router.post("/{ds_id}/publish")
+def publish_dataset(ds_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """发布为可训练数据集：已脱敏 → 已发布 + 定版。"""
+    author = current.real_name or current.username
+    ok_flag, msg = crud.publish_dataset(db, ds_id, author)
+    if not ok_flag:
+        return err(msg, code=4001)
+    return ok({"success": True})
 
 
 @router.get("/{ds_id}")

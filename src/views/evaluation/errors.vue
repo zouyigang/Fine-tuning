@@ -45,7 +45,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -71,7 +71,7 @@ async function exportCases() {
   await exportErrorCases(query.errorType)
   ElMessage.success('错误案例已导出')
 }
-onMounted(load)
+onActivated(load)
 
 const pieOption = computed(() => ({
   tooltip: { trigger: 'item' },

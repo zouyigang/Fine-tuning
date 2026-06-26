@@ -49,7 +49,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Plus, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -83,7 +83,7 @@ async function remove(t) {
   ElMessage.success('已删除')
   load()
 }
-onMounted(load)
+onActivated(load)
 </script>
 
 <style lang="scss" scoped>

@@ -2,11 +2,11 @@
 import random
 from datetime import datetime
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.task import TrainTask, TrainMetric, TrainLog, ScheduleItem
+from app.models.task import TrainTask, TrainMetric, TrainLog, TaskArtifact, ScheduleItem
 
 TOTAL_STEPS = 20000
 
@@ -67,6 +67,39 @@ def requeue_task(db: Session, task_id: int) -> bool:
     t.errorMsg = None
     db.commit()
     return True
+
+
+def delete_task(db: Session, task_id: int):
+    """删除训练任务。返回 (ok, message)。
+
+    外键关联校验：
+      - 运行中任务不可删（子进程存活），须先终止；
+      - 已产出 model_version 的任务不可删（模型可能已部署/上线，删任务会留孤儿模型），
+        提示先在「模型版本管理」删除该版本。
+    级联清理：train_metric / train_log / task_artifact / schedule_item（均以 task_id 关联）。
+    """
+    from app.models.model_version import ModelVersion
+    t = db.get(TrainTask, task_id)
+    if not t:
+        return False, "任务不存在"
+    if t.status == "running":
+        return False, "运行中的任务请先终止再删除"
+    # 是否已产出模型版本（ModelVersion.task_id 关联，或任务回填的 modelVersionId）
+    mv = db.scalars(select(ModelVersion).where(ModelVersion.task_id == task_id)).first()
+    if mv is None and t.modelVersionId:
+        mv = db.get(ModelVersion, t.modelVersionId)
+    if mv is not None:
+        ver = (mv.version or "").strip()
+        return False, (f"该任务已产出模型版本「{mv.name or ''} {ver}」，"
+                       f"请先在「模型版本管理」中删除该版本后再删除任务")
+    # 级联清理子表（时序/日志/产物/调度队列项）
+    db.execute(delete(TrainMetric).where(TrainMetric.task_id == task_id))
+    db.execute(delete(TrainLog).where(TrainLog.task_id == task_id))
+    db.execute(delete(TaskArtifact).where(TaskArtifact.task_id == task_id))
+    db.execute(delete(ScheduleItem).where(ScheduleItem.task_id == task_id))
+    db.delete(t)
+    db.commit()
+    return True, ""
 
 
 def metric_count(db: Session, task_id: int) -> int:

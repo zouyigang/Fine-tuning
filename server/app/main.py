@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.response import ok, err
 from app.deps import enforce_rbac
-from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log, user
+from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log, user, screen
 from app.core.oplog import operation_log_middleware
 
 
@@ -23,10 +23,24 @@ from app.core.oplog import operation_log_middleware
 async def lifespan(app: FastAPI):
     # 建表（开发期 create_all；生产用 Alembic）
     init_db()
+    # 账号与评估参考数据始终幂等保证（与演示业务种子解耦）：
+    # 即使 AUTO_SEED=false（清库只留真实数据），登录账号与评估三页参考数据仍存在。
+    from scripts.seed import (
+        ensure_users, ensure_eval_aggregates, ensure_convert_rules,
+        ensure_dataset_types, ensure_convert_rule_links, ensure_dataset_stage,
+        ensure_path_pipeline,
+    )
+    ensure_users()
+    ensure_eval_aggregates()
+    ensure_dataset_types()      # 须在 convert_rules 之前：新库灌规则时解析类型 FK
+    ensure_convert_rules()
+    ensure_convert_rule_links()  # 既有库补链：旧规则按 typeMatch 关联到 dataset_type
+    ensure_path_pipeline()       # 幂等补齐「路径分析」类型 + 转换规则（既有库不会被表空种子覆盖）
+    ensure_dataset_stage()       # 流水线 P1：回填旧数据 stage / 脱敏规则 maskType
+    # 仅 AUTO_SEED 时灌入演示业务数据（数据集/任务/模型/评估记录等，库空才灌）
     if settings.AUTO_SEED:
-        from scripts.seed import seed_if_empty, ensure_users
+        from scripts.seed import seed_if_empty
         seed_if_empty()
-        ensure_users()  # 幂等：保证默认账号存在
     # 训练调度：real=真实 LLaMA-Factory 引擎；sim=模拟训练调度器（P4）
     if settings.ENGINE_MODE == "real":
         from app.services.engine import start_engine
@@ -61,6 +75,7 @@ app.include_router(evaluation.router, prefix="/api", dependencies=[Depends(enfor
 app.include_router(model.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 app.include_router(config.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(screen.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 app.include_router(log.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 app.include_router(user.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 

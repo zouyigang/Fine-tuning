@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onActivated } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -83,5 +83,5 @@ async function release() {
     releasing.value = false
   }
 }
-onMounted(load)
+onActivated(load)
 </script>

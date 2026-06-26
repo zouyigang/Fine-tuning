@@ -3,13 +3,16 @@
 列表类（评估任务/复核样本/错误案例/报告）直接读表；
 自动化指标 / 基准对比 / 场景验证为聚合分析结果，由本层计算返回。
 """
-import random
 from datetime import datetime
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.models.evaluation import EvalTask, EvalReport, ReviewSample, ErrorCase
+from app.models.evaluation import (
+    EvalTask, EvalReport, ReviewSample, ErrorCase,
+    EvalMetric, EvalPerClass, BenchmarkResult, SceneCase,
+)
+from app.models.model_version import ModelVersion
 
 
 def _paginate(db: Session, stmt, page: int, page_size: int):
@@ -70,13 +73,24 @@ def all_error_cases(db: Session, error_type: str = ""):
     return db.scalars(stmt.order_by(ErrorCase.id)).all()
 
 
+def _model_f1(db: Session, model_name: str | None) -> float:
+    """报告 F1 取真实来源：同名模型版本 F1 均值 → 全部模型版本均值 → 评估任务均值。"""
+    vals = [m.f1 for m in db.scalars(
+        select(ModelVersion).where(ModelVersion.name == model_name)).all() if m.f1 is not None]
+    if not vals:
+        vals = [m.f1 for m in db.scalars(select(ModelVersion)).all() if m.f1 is not None]
+    if not vals:
+        vals = [e.f1 for e in db.scalars(select(EvalTask)).all() if e.f1 is not None]
+    return round(sum(vals) / len(vals), 3) if vals else 0.9
+
+
 def create_report(db: Session, *, model: str, creator: str,
                   conclusion: str = "建议优化后上线", f1: float | None = None):
-    """生成一份评估报告并落库。f1 未给时按经验区间生成。"""
+    """生成一份评估报告并落库。f1 未给时从该模型真实评估结果派生（不再随机）。"""
     rep = EvalReport(
         name=f"模型评估报告-{model or '未命名模型'}",
         model=model or "-",
-        f1=f1 if f1 is not None else round(random.uniform(0.86, 0.96), 3),
+        f1=f1 if f1 is not None else _model_f1(db, model),
         conclusion=conclusion,
         creator=creator or "-",
         createdAt=datetime.now().strftime("%Y-%m-%d"),
@@ -105,53 +119,24 @@ def submit_review_results(db: Session, results: list[dict]) -> int:
     return updated
 
 
-# ---- 聚合分析（静态/计算结果，不单独建表）----
-_METRICS = {
-    "ocr": [
-        {"name": "字符准确率", "value": 98.6, "unit": "%"},
-        {"name": "行准确率", "value": 95.2, "unit": "%"},
-        {"name": "平均编辑距离", "value": 0.04, "unit": ""},
-        {"name": "推理耗时", "value": 42, "unit": "ms"},
-    ],
-    "ner": [
-        {"name": "精确率", "value": 94.8, "unit": "%"},
-        {"name": "召回率", "value": 92.3, "unit": "%"},
-        {"name": "F1 值", "value": 93.5, "unit": "%"},
-        {"name": "实体类型数", "value": 12, "unit": "类"},
-    ],
-    "relation": [
-        {"name": "三元组准确率", "value": 89.7, "unit": "%"},
-        {"name": "关系召回率", "value": 87.1, "unit": "%"},
-        {"name": "F1 值", "value": 88.4, "unit": "%"},
-        {"name": "关系类型数", "value": 8, "unit": "类"},
-    ],
-    "event": [
-        {"name": "事件识别准确率", "value": 91.2, "unit": "%"},
-        {"name": "要素抽取 F1", "value": 88.9, "unit": "%"},
-        {"name": "触发词准确率", "value": 90.5, "unit": "%"},
-        {"name": "事件类型数", "value": 6, "unit": "类"},
-    ],
-}
-
-_PER_CLASS = [
-    {"label": "人名", "precision": 96.2, "recall": 95.1, "f1": 95.6},
-    {"label": "组织机构", "precision": 93.4, "recall": 91.0, "f1": 92.2},
-    {"label": "时间", "precision": 97.8, "recall": 96.5, "f1": 97.1},
-    {"label": "地点", "precision": 92.1, "recall": 89.7, "f1": 90.9},
-    {"label": "金额", "precision": 95.5, "recall": 94.2, "f1": 94.8},
-    {"label": "案由", "precision": 86.3, "recall": 82.5, "f1": 84.4},
-]
+# ---- 聚合分析（读 DB 表；数据可维护、随模型增删，二期由评估引擎写入）----
+def metrics(db: Session, model_type: str = "ner") -> dict:
+    ms = db.scalars(
+        select(EvalMetric).where(EvalMetric.modelType == model_type).order_by(EvalMetric.seq)).all()
+    pcs = db.scalars(
+        select(EvalPerClass).where(EvalPerClass.modelType == model_type).order_by(EvalPerClass.seq)).all()
+    return {
+        "metrics": [{"name": m.name, "value": m.value, "unit": m.unit or ""} for m in ms],
+        "perClass": [{"label": p.label, "precision": p.precision, "recall": p.recall, "f1": p.f1} for p in pcs],
+    }
 
 
-def metrics(model_type: str = "ner") -> dict:
-    return {"metrics": _METRICS.get(model_type, _METRICS["ner"]), "perClass": _PER_CLASS}
-
-
-def benchmark() -> dict:
-    dims = ["精确率", "召回率", "F1 值", "推理速度", "鲁棒性"]
-    cur = [94.8, 92.3, 93.5, 88, 90]
-    prod = [91.2, 88.5, 89.8, 90, 85]
-    hist = [93.0, 90.1, 91.5, 85, 88]
+def benchmark(db: Session) -> dict:
+    rows = db.scalars(select(BenchmarkResult).order_by(BenchmarkResult.seq)).all()
+    dims = [r.dim for r in rows]
+    cur = [r.current for r in rows]
+    prod = [r.prod for r in rows]
+    hist = [r.hist for r in rows]
     return {
         "dims": dims,
         "models": [
@@ -160,26 +145,25 @@ def benchmark() -> dict:
             {"name": "历史最优模型", "values": hist},
         ],
         "compare": [
-            {"dim": d, "current": cur[i], "prod": prod[i], "diff": round(cur[i] - prod[i], 1)}
+            {"dim": d, "current": cur[i], "prod": prod[i], "diff": round((cur[i] or 0) - (prod[i] or 0), 1)}
             for i, d in enumerate(dims)
         ],
     }
 
 
-def scene_validation() -> dict:
-    cases = [
-        {"id": 1, "caseNo": "（2026）刑侦字第 218 号", "type": "盗窃", "sampleCount": 120, "accuracy": 94.2, "hard": False},
-        {"id": 2, "caseNo": "（2026）刑侦字第 365 号", "type": "诈骗", "sampleCount": 86, "accuracy": 91.5, "hard": True},
-        {"id": 3, "caseNo": "（2026）刑侦字第 142 号", "type": "涉毒", "sampleCount": 64, "accuracy": 88.7, "hard": True},
-        {"id": 4, "caseNo": "（2026）刑侦字第 507 号", "type": "经济犯罪", "sampleCount": 158, "accuracy": 95.6, "hard": False},
-        {"id": 5, "caseNo": "（2026）刑侦字第 233 号", "type": "盗窃", "sampleCount": 102, "accuracy": 93.1, "hard": False},
-        {"id": 6, "caseNo": "（2026）刑侦字第 419 号", "type": "诈骗", "sampleCount": 75, "accuracy": 86.4, "hard": True},
-        {"id": 7, "caseNo": "（2026）刑侦字第 188 号", "type": "经济犯罪", "sampleCount": 140, "accuracy": 96.0, "hard": False},
-        {"id": 8, "caseNo": "（2026）刑侦字第 321 号", "type": "涉毒", "sampleCount": 58, "accuracy": 89.3, "hard": True},
-        {"id": 9, "caseNo": "（2026）刑侦字第 276 号", "type": "盗窃", "sampleCount": 110, "accuracy": 92.8, "hard": False},
-        {"id": 10, "caseNo": "（2026）刑侦字第 460 号", "type": "经济犯罪", "sampleCount": 132, "accuracy": 94.9, "hard": False},
-    ]
-    return {
-        "summary": {"total": 1280, "correct": 1186, "accuracy": 92.7, "hardCase": 156, "hardAccuracy": 78.2},
-        "cases": cases,
+def scene_validation(db: Session) -> dict:
+    cases = db.scalars(select(SceneCase).order_by(SceneCase.id)).all()
+    out = [{"id": c.id, "caseNo": c.caseNo, "type": c.type, "sampleCount": c.sampleCount,
+            "accuracy": c.accuracy, "hard": c.hard} for c in cases]
+    total = sum(c.sampleCount or 0 for c in cases)
+    correct = round(sum((c.sampleCount or 0) * (c.accuracy or 0) / 100 for c in cases))
+    hard_total = sum(c.sampleCount or 0 for c in cases if c.hard)
+    hard_correct = round(sum((c.sampleCount or 0) * (c.accuracy or 0) / 100 for c in cases if c.hard))
+    summary = {
+        "total": total,
+        "correct": correct,
+        "accuracy": round(correct / total * 100, 1) if total else 0,
+        "hardCase": hard_total,
+        "hardAccuracy": round(hard_correct / hard_total * 100, 1) if hard_total else 0,
     }
+    return {"summary": summary, "cases": out}

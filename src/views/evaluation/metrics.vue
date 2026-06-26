@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { DataAnalysis } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
@@ -69,7 +69,7 @@ async function load() {
   Object.assign(data, await getMetrics(modelType.value))
   loading.value = false
 }
-onMounted(load)
+onActivated(load)
 
 const chartOption = computed(() => ({
   tooltip: { trigger: 'axis' },

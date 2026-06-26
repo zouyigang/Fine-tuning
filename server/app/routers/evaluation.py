@@ -30,18 +30,18 @@ def get_eval_list(
 
 
 @router.get("/metrics")
-def get_metrics(modelType: str = "ner"):
-    return ok(crud.metrics(modelType))
+def get_metrics(modelType: str = "ner", db: Session = Depends(get_db)):
+    return ok(crud.metrics(db, modelType))
 
 
 @router.get("/benchmark")
-def get_benchmark():
-    return ok(crud.benchmark())
+def get_benchmark(db: Session = Depends(get_db)):
+    return ok(crud.benchmark(db))
 
 
 @router.get("/scene-validation")
-def get_scene_validation():
-    return ok(crud.scene_validation())
+def get_scene_validation(db: Session = Depends(get_db)):
+    return ok(crud.scene_validation(db))
 
 
 @router.get("/review-samples")

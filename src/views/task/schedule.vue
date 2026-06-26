@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -136,5 +136,5 @@ async function create() {
     creating.value = false
   }
 }
-onMounted(load)
+onActivated(load)
 </script>

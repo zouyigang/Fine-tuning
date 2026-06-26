@@ -93,22 +93,30 @@ class TrainingManager:
 
     def gpu_status(self) -> list[dict]:
         """各 GPU 实时状态（pynvml）：序号/名称/显存/利用率/当前训练任务。供监控页展示。"""
+        import time as _time
         out = []
         dev2task = {v: k for k, v in self._device.items()}
         try:
             import pynvml
             pynvml.nvmlInit()
-            for i in range(pynvml.nvmlDeviceGetCount()):
-                h = pynvml.nvmlDeviceGetHandleByIndex(i)
+            handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(pynvml.nvmlDeviceGetCount())]
+            # 取 ~0.6s 窗口内的峰值利用率：小模型训练步间有空隙，单次瞬时采样常误读 0。
+            util_max = [0] * len(handles)
+            for _ in range(5):
+                for i, h in enumerate(handles):
+                    u = pynvml.nvmlDeviceGetUtilizationRates(h).gpu
+                    if u > util_max[i]:
+                        util_max[i] = u
+                _time.sleep(0.12)
+            for i, h in enumerate(handles):
                 mem = pynvml.nvmlDeviceGetMemoryInfo(h)
-                util = pynvml.nvmlDeviceGetUtilizationRates(h)
                 name = pynvml.nvmlDeviceGetName(h)
                 out.append({
                     "index": i,
                     "name": name.decode() if isinstance(name, bytes) else name,
                     "memUsedMB": round(mem.used / 1024 / 1024),
                     "memTotalMB": round(mem.total / 1024 / 1024),
-                    "util": util.gpu,
+                    "util": util_max[i],
                     "taskId": dev2task.get(i),
                 })
             pynvml.nvmlShutdown()
@@ -259,13 +267,15 @@ class TrainingManager:
         if ds is None and ds_name:
             ds = db.scalars(select(Dataset).where(Dataset.name == ds_name)).first()
         if ds is not None:
-            rec = db.scalars(
-                select(DatasetFile).where(DatasetFile.dataset_id == ds.id)
-                .order_by(DatasetFile.id.desc())
-            ).first()
+            # 按任务模型类型选训练文件：实体识别→NER 文件 / 关系抽取→关系文件
+            # （「实体关系标注」发布时已分别产出两份）；其它类型回退最新文件。
+            from app.crud import dataset as ds_crud
+            rec = ds_crud.dataset_file_for_task(db, ds.id, t.modelType)
         if rec is not None:
             abspath = st.abspath_of("datasets", rec.storedName)
-            return ec.register_dataset(f"ds{ds.id}", abspath, ds_type=ds.type)
+            from app.crud import convert_rule as rule_crud
+            rules = rule_crud.load_rules_for_type(db, ds.type)
+            return ec.register_dataset(f"ds{ds.id}_{rec.variant or 'main'}", abspath, ds_type=ds.type, rules=rules)
         _log(db, t.id, "WARN", f"未找到数据集「{ds_name}」的上传文件，回退内置 demo 数据集")
         return ec.ensure_demo_dataset()
 

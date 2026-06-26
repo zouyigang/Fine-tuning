@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.response import ok, page
 from app.crud import config as crud
+from app.crud import convert_rule as rule_crud
 from app.schemas.config import (
     BaseModelOut, BaseModelIn, HyperTemplateOut, HyperTemplateIn, RolePermIn,
-    QuotaSaveIn, AutoTuneIn,
+    QuotaSaveIn, AutoTuneIn, ConvertRuleIn, ConvertRuleStatusIn, ConvertPreviewIn,
 )
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -88,3 +89,32 @@ def get_role_permissions(db: Session = Depends(get_db)):
 def save_role_permissions(payload: RolePermIn, db: Session = Depends(get_db)):
     crud.save_role_permissions(db, payload.roles)
     return ok({"success": True})
+
+
+# ---- 数据转换规则（业务原始数据 → alpaca 指令样本）----
+@router.get("/convert-rules")
+def get_convert_rules(db: Session = Depends(get_db)):
+    return ok(rule_crud.list_rules(db))
+
+
+@router.post("/convert-rules")
+def save_convert_rule(payload: ConvertRuleIn, db: Session = Depends(get_db)):
+    rule_crud.save_rule(db, payload.model_dump(exclude_none=True))
+    return ok({"success": True})
+
+
+@router.put("/convert-rules/{rid}/status")
+def set_convert_rule_status(rid: int, payload: ConvertRuleStatusIn, db: Session = Depends(get_db)):
+    rule_crud.set_enabled(db, rid, payload.enabled)
+    return ok({"success": True})
+
+
+@router.delete("/convert-rules/{rid}")
+def delete_convert_rule(rid: int, db: Session = Depends(get_db)):
+    rule_crud.delete_rule(db, rid)
+    return ok({"success": True})
+
+
+@router.post("/convert-rules/preview")
+def preview_convert(payload: ConvertPreviewIn, db: Session = Depends(get_db)):
+    return ok(rule_crud.preview(db, payload.sample, payload.dsType))

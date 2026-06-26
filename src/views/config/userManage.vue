@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -151,5 +151,5 @@ async function remove(row) {
   ElMessage.success('用户已删除')
   load()
 }
-onMounted(load)
+onActivated(load)
 </script>

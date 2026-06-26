@@ -8,12 +8,7 @@ export const MODEL_TYPES = [
   { value: 'path', label: '路径分析' }
 ]
 
-export const DATA_TYPES = [
-  { value: 'ocr', label: 'OCR 校对结果' },
-  { value: 'entity', label: '实体关系标注' },
-  { value: 'event', label: '事件标注' },
-  { value: 'risk', label: '风险样本' }
-]
+// 数据集类型不再硬编码：导入页改由后端 `GET /dataset/types`（dataset_type 表，仅启用项）读取。
 
 export const BASE_MODELS = [
   { value: 'qwen3-0.6b', label: 'Qwen3-0.6B（开源）' },

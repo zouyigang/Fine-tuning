@@ -31,8 +31,8 @@ export const asyncRoutes = [
     meta: { title: '数据集管理', icon: 'Coin' },
     children: [
       { path: 'import', name: 'DatasetImport', component: () => import('@/views/dataset/import.vue'), meta: { title: '数据集导入', icon: 'Upload' } },
-      { path: 'desensitize', name: 'DatasetDesensitize', component: () => import('@/views/dataset/desensitize.vue'), meta: { title: '数据集脱敏处理', icon: 'Lock' } },
       { path: 'annotation', name: 'DatasetAnnotation', component: () => import('@/views/dataset/annotation.vue'), meta: { title: '多类型数据标注', icon: 'EditPen' } },
+      { path: 'desensitize', name: 'DatasetDesensitize', component: () => import('@/views/dataset/desensitize.vue'), meta: { title: '数据集脱敏处理', icon: 'Lock' } },
       { path: 'version', name: 'DatasetVersion', component: () => import('@/views/dataset/version.vue'), meta: { title: '数据集版本管理', icon: 'Files' } },
       { path: 'statistics', name: 'DatasetStatistics', component: () => import('@/views/dataset/statistics.vue'), meta: { title: '数据集统计分析', icon: 'DataAnalysis' } },
       { path: 'permission', name: 'DatasetPermission', component: () => import('@/views/dataset/permission.vue'), meta: { title: '数据集权限控制', icon: 'Key' } }
@@ -90,6 +90,8 @@ export const asyncRoutes = [
       { path: 'hyper-template', name: 'ConfigHyperTemplate', component: () => import('@/views/config/hyperTemplate.vue'), meta: { title: '超参模板管理', icon: 'Collection' } },
       { path: 'resource', name: 'ConfigResource', component: () => import('@/views/config/resource.vue'), meta: { title: '训练资源配置', icon: 'Platform' } },
       { path: 'auto-tune', name: 'ConfigAutoTune', component: () => import('@/views/config/autoTune.vue'), meta: { title: '自动调优配置', icon: 'MagicStick' } },
+      { path: 'dataset-type', name: 'ConfigDatasetType', component: () => import('@/views/config/datasetType.vue'), meta: { title: '数据集类型管理', icon: 'CollectionTag' } },
+      { path: 'convert-rule', name: 'ConfigConvertRule', component: () => import('@/views/config/convertRule.vue'), meta: { title: '数据转换规则', icon: 'Switch' } },
       { path: 'permission', name: 'ConfigPermission', component: () => import('@/views/config/permission.vue'), meta: { title: '操作权限配置', icon: 'UserFilled' } },
       { path: 'user-manage', name: 'ConfigUserManage', component: () => import('@/views/config/userManage.vue'), meta: { title: '用户与角色管理', icon: 'User' } },
       { path: 'operation-log', name: 'ConfigOperationLog', component: () => import('@/views/config/operationLog.vue'), meta: { title: '操作日志审计', icon: 'Document' } }

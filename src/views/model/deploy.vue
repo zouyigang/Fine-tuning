@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onActivated } from 'vue'
 import { Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -113,7 +113,7 @@ async function deploy(row) {
     deploying.value = false
   }
 }
-onMounted(async () => {
+onActivated(async () => {
   targets.value = await getDeployTargets()
   const res = await getModelList({ pageSize: 100 })
   models.value = res.list || []

@@ -71,3 +71,25 @@ class AutoTuneIn(BaseModel):
     searchAlgo: str | None = None
     maxTrials: int | None = 30
     parallelTrials: int | None = 4
+
+
+class ConvertRuleIn(BaseModel):
+    id: int | None = None
+    datasetTypeId: int | None = None    # 方案2：规则所属数据集类型（dataset_type.id）
+    typeMatch: str | None = ""          # 旧关键字（保留兼容，DB 匹配已不用）
+    name: str
+    priority: int | None = 10
+    instruction: str | None = ""
+    inputAliases: list[str] | None = []
+    outputAliases: list[str] | None = []
+    outputFormat: str | None = "text"   # text | json
+    enabled: bool | None = True
+
+
+class ConvertRuleStatusIn(BaseModel):
+    enabled: bool
+
+
+class ConvertPreviewIn(BaseModel):
+    sample: str                  # 原始样本（JSON 对象/数组/JSONL）
+    dsType: str | None = None    # 数据集类型（决定命中哪些规则）

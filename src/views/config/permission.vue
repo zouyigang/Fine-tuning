@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -39,7 +39,7 @@ const data = reactive({ perms: [], roles: [] })
 const matrix = reactive({})
 const rows = computed(() => data.perms.map((p) => ({ perm: p })))
 
-onMounted(async () => {
+onActivated(async () => {
   Object.assign(data, await getRolePermissions())
   data.roles.forEach((role) => {
     matrix[role.role] = {}

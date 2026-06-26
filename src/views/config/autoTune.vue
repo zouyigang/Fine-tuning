@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseChart from '@/components/BaseChart.vue'
@@ -113,7 +113,7 @@ async function save() {
   })
   ElMessage.success('自动调优配置已保存，调优任务已启动')
 }
-onMounted(async () => Object.assign(cfg, await getAutoTuneConfig()))
+onActivated(async () => Object.assign(cfg, await getAutoTuneConfig()))
 </script>
 
 <style lang="scss" scoped>

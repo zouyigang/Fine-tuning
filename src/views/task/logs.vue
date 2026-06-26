@@ -39,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onActivated, nextTick } from 'vue'
 import { Search, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -63,7 +63,7 @@ async function download() {
     /* 错误提示已在 downloadFile 内统一处理 */
   }
 }
-onMounted(load)
+onActivated(load)
 </script>
 
 <style lang="scss" scoped>

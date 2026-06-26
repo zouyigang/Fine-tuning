@@ -54,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { ROLES } from '@/utils/dict'
@@ -90,5 +90,5 @@ function showAudit(row) {
   ]
   auditDrawer.value = true
 }
-onMounted(load)
+onActivated(load)
 </script>

@@ -46,7 +46,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODEL_STATUS } from '@/utils/dict'
@@ -65,5 +65,5 @@ async function load() {
   total.value = res.total
   loading.value = false
 }
-onMounted(load)
+onActivated(load)
 </script>

@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Search, RefreshRight } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getOperationLogs, getLogModules } from '@/api/modules/log'
@@ -99,7 +99,7 @@ function reset() {
   Object.assign(query, { username: '', module: '', status: '', keyword: '', page: 1 })
   load()
 }
-onMounted(async () => {
+onActivated(async () => {
   modules.value = await getLogModules()
   load()
 })

@@ -61,7 +61,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onActivated } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -112,7 +112,7 @@ async function expand(g) {
   ElMessage.success(`已扩大灰度流量至 ${next}%`)
 }
 
-onMounted(async () => {
+onActivated(async () => {
   releases.value = await getGrayReleases()
   trend.value = await getGrayTrend()
   const res = await getGrayCandidates()

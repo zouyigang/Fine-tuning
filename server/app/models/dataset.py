@@ -24,6 +24,9 @@ class Dataset(Base):
     version = Column(String(16), default="v1.0")
     desensitized = Column(Boolean, default=False)
     status = Column(String(16), default="标注中")
+    # 数据集生命周期阶段（权威字段）：待标注→标注中→已标注→已脱敏→已发布→已归档。
+    # status 旧字段保留作兼容展示，stage 驱动「导入→标注→脱敏→发布」流水线。
+    stage = Column(String(16), default="待标注")
     owner = Column(String(32))
     updatedAt = Column("updated_at", String(32))
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -50,6 +53,9 @@ class DesensitizeRule(Base):
     rule = Column(String(128))
     sample = Column(String(128))
     enabled = Column(Boolean, default=True)
+    # 可执行掩码类型：idcard/phone/bankcard/name/email/custom；custom 用 pattern(正则)
+    maskType = Column("mask_type", String(16), default="custom")
+    pattern = Column(String(255))
 
 
 class AnnotationTask(Base):
@@ -80,6 +86,38 @@ class DatasetPermission(Base):
     canExport = Column("can_export", Boolean, default=False)
 
 
+class DatasetType(Base):
+    """数据集类型字典（导入页类型下拉的数据源，可启停/排序）。
+
+    value 为英文标识，label 为展示中文（也是写入 dataset.type 的值）。
+    enabled=False 的类型不在导入下拉出现。
+    """
+    __tablename__ = "dataset_type"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    value = Column(String(32), unique=True)
+    label = Column(String(64))
+    seq = Column(Integer, default=0)
+    enabled = Column(Boolean, default=True)
+
+
+class DatasetSample(Base):
+    """逐样本主干（P2）：标注/脱敏/发布都作用在它上面。
+
+    raw=导入时的原始行；labeled=标注后结构化字段；masked=脱敏后内容。
+    发布时按 masked→labeled→raw 优先级导出为训练文件。
+    """
+    __tablename__ = "dataset_sample"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(Integer, index=True)
+    idx = Column(Integer)                 # 行序号
+    raw = Column(JSON)                    # 原始行
+    labeled = Column(JSON)                # 标注后（未标注为空）
+    masked = Column(JSON)                 # 脱敏后（未脱敏为空）
+    status = Column(String(16), default="待标注")  # 待标注 / 已标注
+
+
 class DatasetFile(Base):
     """数据集上传的原始文件记录（物理文件存于 storage/datasets/）。"""
     __tablename__ = "dataset_file"
@@ -91,3 +129,6 @@ class DatasetFile(Base):
     size = Column(Integer, default=0)             # 字节数
     rows = Column(Integer, default=0)             # 估算样本量
     uploadedAt = Column("uploaded_at", String(32))
+    # 训练文件子类型：同一标注可发布出多份训练集（如「实体关系标注」既能训 NER 又能训关系抽取）。
+    # None=单一训练文件；'ner'=命名实体；'relation'=关系三元组。引擎按任务模型类型选对应文件。
+    variant = Column(String(16))

@@ -80,7 +80,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -133,7 +133,7 @@ async function doExport(row, format) {
   await exportReport(row.id, format)
   ElMessage.success(`已导出 ${format === 'excel' ? 'Excel' : 'PDF'} 报告`)
 }
-onMounted(async () => {
+onActivated(async () => {
   await load()
   const res = await getModelList({ pageSize: 100 })
   models.value = res.list || []

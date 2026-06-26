@@ -73,18 +73,38 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated, onDeactivated } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import BaseChart from '@/components/BaseChart.vue'
 import { TASK_STATUS } from '@/utils/dict'
-import { getDashboardOverview } from '@/api/modules/dashboard'
+import { getDashboardOverview, getDashboardLive } from '@/api/modules/dashboard'
 
 const data = reactive({ stats: [], taskTrend: { dates: [] }, modelTypeDist: [], recentTasks: [], todos: [] })
 const trendType = ref('all')
 
-onMounted(async () => {
+// 每 5s 轮询「会动」的字段：GPU 利用率/显存、进行中任务数、最近任务进度。
+// 趋势图/饼图/数据集总数等慢变或重绘代价大的部分保持页面加载时的快照不刷新。
+let liveTimer = null
+async function refreshLive() {
+  const { gpu, runningCount, recentTasks } = await getDashboardLive()
+  const gpuCard = data.stats.find((s) => s.label === 'GPU 资源使用率')
+  if (gpuCard) {
+    gpuCard.value = gpu.util
+    gpuCard.sub = gpu.sub
+  }
+  const runCard = data.stats.find((s) => s.label === '进行中微调任务')
+  if (runCard) runCard.value = runningCount
+  if (recentTasks) data.recentTasks = recentTasks
+}
+onActivated(async () => {
+  // 每次进入页面（含 keep-alive 缓存复用）重新拉总览快照，避免数据陈旧
   Object.assign(data, await getDashboardOverview())
+  liveTimer = setInterval(refreshLive, 5000)
+})
+onDeactivated(() => {
+  clearInterval(liveTimer)
+  liveTimer = null
 })
 
 const trendOption = computed(() => {

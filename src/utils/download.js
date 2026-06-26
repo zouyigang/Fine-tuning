@@ -43,8 +43,10 @@ export async function downloadFile(url, { method = 'get', params, data, fallback
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   })
   const blob = resp.data
-  // 后端出错时会回传 JSON（被包成 blob），需识别并提示
-  if (blob.type && blob.type.includes('application/json')) {
+  // 后端出错时会回传 JSON（被包成 blob），需识别并提示。
+  // 精确匹配 mime（剥离 charset 等参数），避免把 application/jsonl 等误判成 JSON 错误。
+  const mime = (blob.type || '').split(';')[0].trim().toLowerCase()
+  if (mime === 'application/json') {
     const text = await blob.text()
     let msg = '下载失败'
     try { msg = JSON.parse(text).message || msg } catch (e) { /* ignore */ }

@@ -28,6 +28,9 @@
           <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.type }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="dept" label="所属部门" width="110" />
+        <el-table-column label="阶段" width="90">
+          <template #default="{ row }"><el-tag size="small" :type="STAGE_TYPE[row.stage] || 'info'">{{ row.stage || '待标注' }}</el-tag></template>
+        </el-table-column>
         <el-table-column prop="total" label="样本量" width="100" />
         <el-table-column label="标注进度" width="160">
           <template #default="{ row }"><el-progress :percentage="row.progress" :stroke-width="10" /></template>
@@ -39,10 +42,21 @@
         </el-table-column>
         <el-table-column prop="version" label="版本" width="80" />
         <el-table-column prop="updatedAt" label="更新时间" width="150" />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small">详情</el-button>
-            <el-button link type="primary" size="small">标注</el-button>
+            <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
+            <el-button link type="primary" size="small" @click="goAnnotate(row)">标注</el-button>
+            <!-- 实体关系标注：训练数据分 命名实体 / 关系三元组 两份，下拉选 -->
+            <el-dropdown v-if="row.stage === '已发布' && isEntityType(row.type)" trigger="click" @command="(v) => download(row, v)">
+              <el-button link type="success" size="small" :icon="Download">训练数据<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="relation">关系三元组</el-dropdown-item>
+                  <el-dropdown-item command="ner">命名实体（NER）</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-button v-else-if="row.stage === '已发布'" link type="success" size="small" :icon="Download" @click="download(row)">训练数据</el-button>
             <el-popconfirm title="确认删除该数据集？" @confirm="remove(row)">
               <template #reference><el-button link type="danger" size="small">删除</el-button></template>
             </el-popconfirm>
@@ -61,6 +75,24 @@
         @change="load"
       />
     </el-card>
+
+    <!-- 详情弹窗 -->
+    <el-dialog v-model="detailDialog" title="数据集详情" width="640px">
+      <el-descriptions v-if="detail" :column="2" border>
+        <el-descriptions-item label="名称">{{ detail.name }}</el-descriptions-item>
+        <el-descriptions-item label="类型">{{ detail.type }}</el-descriptions-item>
+        <el-descriptions-item label="所属部门">{{ detail.dept }}</el-descriptions-item>
+        <el-descriptions-item label="阶段"><el-tag size="small" :type="STAGE_TYPE[detail.stage] || 'info'">{{ detail.stage || '待标注' }}</el-tag></el-descriptions-item>
+        <el-descriptions-item label="样本量">{{ detail.total }}</el-descriptions-item>
+        <el-descriptions-item label="标注进度">{{ detail.progress }}%（已标 {{ detail.labeled || 0 }}）</el-descriptions-item>
+        <el-descriptions-item label="脱敏">{{ detail.desensitized ? '已脱敏' : '未脱敏' }}</el-descriptions-item>
+        <el-descriptions-item label="版本">{{ detail.version }}</el-descriptions-item>
+        <el-descriptions-item label="负责人">{{ detail.owner }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ detail.updatedAt }}</el-descriptions-item>
+      </el-descriptions>
+      <div class="lbl-sample">样本预览（前 3 条原始数据）</div>
+      <pre class="sample-pre">{{ samplePreview }}</pre>
+    </el-dialog>
 
     <!-- 导入弹窗 -->
     <el-dialog v-model="dialog" title="导入数据集" width="640px">
@@ -120,12 +152,24 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { Search, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onActivated } from 'vue'
+import { Search, Refresh, Upload, UploadFilled, Download, ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { DATA_TYPES, DEPARTMENTS } from '@/utils/dict'
-import { getDatasetList, createDataset, deleteDataset, uploadDatasetFile } from '@/api/modules/dataset'
+import { useRouter } from 'vue-router'
+import { DEPARTMENTS } from '@/utils/dict'
+import { getDatasetList, createDataset, deleteDataset, uploadDatasetFile, getDatasetTypes, getDatasetSamples, downloadTrainData } from '@/api/modules/dataset'
+
+const router = useRouter()
+
+// 类型下拉数据源：从数据库读取（仅启用的类型），替代原前端硬编码 DATA_TYPES
+const DATA_TYPES = ref([])
+
+// 数据集流水线阶段 → 标签颜色
+const STAGE_TYPE = {
+  待标注: 'info', 标注中: 'primary', 已标注: 'warning',
+  已脱敏: 'warning', 已发布: 'success', 已归档: 'info'
+}
 
 const loading = ref(false)
 const list = ref([])
@@ -162,6 +206,36 @@ async function remove(row) {
   await deleteDataset(row.id)
   ElMessage.success('删除成功')
   load()
+}
+
+// 详情：展示数据集信息 + 前 3 条样本预览
+const detailDialog = ref(false)
+const detail = ref(null)
+const samplePreview = ref('加载中…')
+async function openDetail(row) {
+  detail.value = row
+  samplePreview.value = '加载中…'
+  detailDialog.value = true
+  try {
+    const res = await getDatasetSamples(row.id, { page: 1, pageSize: 3 })
+    const rows = (res.list || []).map((s) => s.raw)
+    samplePreview.value = rows.length ? JSON.stringify(rows, null, 2) : '（暂无样本，可能是历史数据集或非本地上传）'
+  } catch (e) {
+    samplePreview.value = '（样本加载失败）'
+  }
+}
+
+// 标注：跳转到标注页并带上数据集 id，自动选中其标注任务
+function goAnnotate(row) {
+  router.push({ path: '/dataset/annotation', query: { datasetId: row.id } })
+}
+// 「实体关系标注」类型发布后会产出 命名实体/关系三元组 两份训练文件，需分别下载
+function isEntityType(type) {
+  return /实体|关系/.test(type || '')
+}
+async function download(row, variant = '') {
+  // 仅已发布数据集有最终 alpaca 训练文件；失败原因由下载工具/拦截器提示
+  try { await downloadTrainData(row.id, variant) } catch (e) { /* 已提示 */ }
 }
 function onFileChange(file) {
   selectedFile.value = file.raw
@@ -212,5 +286,31 @@ function now() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-onMounted(load)
+async function loadTypes() {
+  DATA_TYPES.value = await getDatasetTypes()
+}
+
+onActivated(() => {
+  load()
+  loadTypes()
+})
 </script>
+
+<style lang="scss" scoped>
+.lbl-sample {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a919f;
+}
+.sample-pre {
+  background: #fafafa;
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin: 0;
+  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+</style>

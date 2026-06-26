@@ -19,6 +19,11 @@ export function updateTaskStatus(id, status) {
   return service.put(`/task/${id}/status`, { status })
 }
 
+// 删除训练任务（运行中/已产出模型版本的任务后端会拒绝并提示）
+export function deleteTask(id) {
+  return service.delete(`/task/${id}`)
+}
+
 // 把超参配置应用到指定任务（payload: { method?, hyperparams }）
 export function applyHyperparams(id, payload) {
   return service.put(`/task/${id}/hyperparams`, payload)

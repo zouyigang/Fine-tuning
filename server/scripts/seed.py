@@ -9,14 +9,17 @@ from app.core.database import SessionLocal, init_db
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.dataset import (
-    Dataset, DatasetVersion, DesensitizeRule, AnnotationTask, DatasetPermission,
+    Dataset, DatasetVersion, DesensitizeRule, AnnotationTask, DatasetPermission, DatasetType,
 )
 from app.models.task import TrainTask, TrainLog
-from app.models.evaluation import EvalTask, EvalReport, ReviewSample, ErrorCase
+from app.models.evaluation import (
+    EvalTask, EvalReport, ReviewSample, ErrorCase,
+    EvalMetric, EvalPerClass, BenchmarkResult, SceneCase,
+)
 from app.models.model_version import ModelVersion, GrayRelease, ReleaseHistory, DeployTarget
 from app.models.config import (
     BaseModelInfo, HyperTemplate, ResourceQuota, ClusterInfo,
-    AutoTuneConfig, AutoTuneTrial, SysRole, PermCatalog,
+    AutoTuneConfig, AutoTuneTrial, SysRole, PermCatalog, ConvertRule,
 )
 from app.models.oplog import OperationLog
 
@@ -41,13 +44,14 @@ DEFAULT_VERSIONS = [
     ("v1.1", "新增事件要素标注", "王五", 41000, False, "2026-05-08 16:40"),
     ("v1.0", "初始版本导入", "赵六", 32000, False, "2026-04-20 11:00"),
 ]
+# (field, rule描述, sample, enabled, maskType)
 DEFAULT_RULES = [
-    ("身份证号", "保留前6后4，中间*", "110101********1234", True),
-    ("手机号", "保留前3后4", "138****8888", True),
-    ("银行卡号", "仅保留后4位", "**** **** **** 6789", True),
-    ("姓名", "保留姓氏", "张**", True),
-    ("家庭住址", "保留到区县", "北京市朝阳区****", False),
-    ("案件编号", "哈希脱敏", "A1B2****E5F6", False),
+    ("身份证号", "保留前6后4，中间*", "110101********1234", True, "idcard"),
+    ("手机号", "保留前3后4", "138****8888", True, "phone"),
+    ("银行卡号", "仅保留后4位", "**** **** **** 6789", True, "bankcard"),
+    ("姓名", "保留姓氏", "张**", True, "name"),
+    ("家庭住址", "保留到区县", "北京市朝阳区****", False, "custom"),
+    ("电子邮箱", "保留首字符与域名", "z***@example.com", False, "email"),
 ]
 
 
@@ -72,7 +76,7 @@ def seed_dataset(db):
             db.add(DatasetVersion(dataset_id=ds.id, version=v[0], desc=v[1], author=v[2],
                                   count=v[3], current=v[4], time=v[5]))
     for r in DEFAULT_RULES:
-        db.add(DesensitizeRule(field=r[0], rule=r[1], sample=r[2], enabled=r[3]))
+        db.add(DesensitizeRule(field=r[0], rule=r[1], sample=r[2], enabled=r[3], maskType=r[4]))
     for i in range(16):
         db.add(AnnotationTask(
             dataset_id=random.choice(datasets).id,
@@ -161,6 +165,216 @@ def seed_evaluation(db):
             errorType=random.choice(types), content="犯罪嫌疑人在2026年初多次往返于江浙沪一带",
             expected="时间: 2026年初", actual="时间: 2026年",
             modelType=random.choice(["实体识别", "关系抽取", "事件构建"]), count=random.randint(1, 30)))
+
+
+# ========== 评估聚合分析（自动化指标 / 各类别 / 基准对比 / 场景验证）==========
+# 迁自原 crud 硬编码常量，落库后可维护、随模型增删；二期评估引擎写入同一批表。
+_EVAL_METRICS = {
+    "ocr": [("字符准确率", 98.6, "%"), ("行准确率", 95.2, "%"), ("平均编辑距离", 0.04, ""), ("推理耗时", 42, "ms")],
+    "ner": [("精确率", 94.8, "%"), ("召回率", 92.3, "%"), ("F1 值", 93.5, "%"), ("实体类型数", 12, "类")],
+    "relation": [("三元组准确率", 89.7, "%"), ("关系召回率", 87.1, "%"), ("F1 值", 88.4, "%"), ("关系类型数", 8, "类")],
+    "event": [("事件识别准确率", 91.2, "%"), ("要素抽取 F1", 88.9, "%"), ("触发词准确率", 90.5, "%"), ("事件类型数", 6, "类")],
+}
+_EVAL_PER_CLASS = [
+    ("人名", 96.2, 95.1, 95.6), ("组织机构", 93.4, 91.0, 92.2), ("时间", 97.8, 96.5, 97.1),
+    ("地点", 92.1, 89.7, 90.9), ("金额", 95.5, 94.2, 94.8), ("案由", 86.3, 82.5, 84.4),
+]
+_BENCHMARK = [
+    ("精确率", 94.8, 91.2, 93.0), ("召回率", 92.3, 88.5, 90.1), ("F1 值", 93.5, 89.8, 91.5),
+    ("推理速度", 88, 90, 85), ("鲁棒性", 90, 85, 88),
+]
+_SCENE_CASES = [
+    ("（2026）刑侦字第 218 号", "盗窃", 120, 94.2, False),
+    ("（2026）刑侦字第 365 号", "诈骗", 86, 91.5, True),
+    ("（2026）刑侦字第 142 号", "涉毒", 64, 88.7, True),
+    ("（2026）刑侦字第 507 号", "经济犯罪", 158, 95.6, False),
+    ("（2026）刑侦字第 233 号", "盗窃", 102, 93.1, False),
+    ("（2026）刑侦字第 419 号", "诈骗", 75, 86.4, True),
+    ("（2026）刑侦字第 188 号", "经济犯罪", 140, 96.0, False),
+    ("（2026）刑侦字第 321 号", "涉毒", 58, 89.3, True),
+    ("（2026）刑侦字第 276 号", "盗窃", 110, 92.8, False),
+    ("（2026）刑侦字第 460 号", "经济犯罪", 132, 94.9, False),
+]
+
+
+def seed_eval_aggregates(db):
+    """灌入评估聚合分析数据（自动化指标 / 各类别 / 基准对比 / 场景案件）。"""
+    for mtype, items in _EVAL_METRICS.items():
+        for i, (name, val, unit) in enumerate(items):
+            db.add(EvalMetric(modelType=mtype, name=name, value=val, unit=unit, seq=i))
+        # 各类别细分指标：四种模型类型共用同一套类别（与原行为一致）
+        for i, (label, p, r, f) in enumerate(_EVAL_PER_CLASS):
+            db.add(EvalPerClass(modelType=mtype, label=label, precision=p, recall=r, f1=f, seq=i))
+    for i, (dim, cur, prod, hist) in enumerate(_BENCHMARK):
+        db.add(BenchmarkResult(dim=dim, current=cur, prod=prod, hist=hist, seq=i))
+    for caseNo, ctype, cnt, acc, hard in _SCENE_CASES:
+        db.add(SceneCase(caseNo=caseNo, type=ctype, sampleCount=cnt, accuracy=acc, hard=hard))
+
+
+def ensure_eval_aggregates():
+    """幂等灌入评估聚合数据：表为空才写。每次启动调用，兼容既有库（新增表自动补数据）。"""
+    db = SessionLocal()
+    try:
+        if db.query(EvalMetric).count() == 0:
+            seed_eval_aggregates(db)
+            db.commit()
+            print("评估聚合数据已灌入（eval_metric / eval_per_class / benchmark_result / scene_case）")
+    finally:
+        db.close()
+
+
+def seed_convert_rules(db):
+    """灌入内置的 5 条默认转换规则（与代码内 DEFAULT_RULES 等价）。
+
+    需在 dataset_type 已灌入后调用：据 datasetTypeValue 解析出 dataset_type_id（方案2 FK）。
+    """
+    from app.services.dataset_convert import DEFAULT_RULES
+    type_id = {t.value: t.id for t in db.query(DatasetType).all()}
+    for r in DEFAULT_RULES:
+        db.add(ConvertRule(
+            datasetTypeId=type_id.get(r["datasetTypeValue"]),
+            typeMatch=r["typeMatch"], name=r["name"], priority=r["priority"],
+            instruction=r["instruction"], inputAliases=r["inputAliases"],
+            outputAliases=r["outputAliases"], outputFormat=r["outputFormat"], enabled=r["enabled"],
+        ))
+
+
+def ensure_convert_rules():
+    """幂等灌入数据转换规则：表为空才写。每次启动调用，兼容既有库。
+
+    引擎 load_rules 在表空时也会回退内置默认，故此处仅为「让规则可在页面被看到/编辑」。
+    """
+    db = SessionLocal()
+    try:
+        if db.query(ConvertRule).count() == 0:
+            seed_convert_rules(db)
+            db.commit()
+            print("数据转换规则已灌入（convert_rule，5 条默认规则）")
+    finally:
+        db.close()
+
+
+# 数据集类型字典（value 与前端 dict.js DATA_TYPES 一致，label 即写入 dataset.type 的值）
+DATASET_TYPE_DICT = [
+    ("ocr", "OCR 校对结果"),
+    ("entity", "实体关系标注"),
+    ("event", "事件标注"),
+    ("risk", "风险样本"),
+    ("path", "路径分析"),
+]
+
+
+def seed_dataset_types(db):
+    for i, (value, label) in enumerate(DATASET_TYPE_DICT):
+        db.add(DatasetType(value=value, label=label, seq=i, enabled=True))
+
+
+def ensure_dataset_types():
+    """幂等灌入数据集类型字典：表为空才写。每次启动调用，兼容既有库。"""
+    db = SessionLocal()
+    try:
+        if db.query(DatasetType).count() == 0:
+            seed_dataset_types(db)
+            db.commit()
+            print("数据集类型字典已灌入（dataset_type，4 条）")
+    finally:
+        db.close()
+
+
+def ensure_convert_rule_links():
+    """方案2 迁移补链：把 datasetTypeId 为空的旧规则，按其 typeMatch 关键字关联到 dataset_type。
+
+    幂等：只处理未关联的规则。兼容「先前已灌规则、后加 dataset_type_id 列」的既有库。
+    需在 dataset_type 已灌入后调用。
+    """
+    db = SessionLocal()
+    try:
+        types = db.query(DatasetType).all()
+        unlinked = db.query(ConvertRule).filter(ConvertRule.datasetTypeId.is_(None)).all()
+        if not types or not unlinked:
+            return
+        fixed = 0
+        for r in unlinked:
+            kws = [k.strip().lower() for k in (r.typeMatch or "").replace("，", ",").split(",") if k.strip()]
+            match = None
+            for t in types:
+                hay = f"{t.value or ''} {t.label or ''}".lower()
+                if any(k in hay for k in kws):
+                    match = t
+                    break
+            if match:
+                r.datasetTypeId = match.id
+                fixed += 1
+        if fixed:
+            db.commit()
+            print(f"转换规则补链完成（按 typeMatch 关联到 dataset_type）：{fixed} 条")
+    finally:
+        db.close()
+
+
+def ensure_path_pipeline():
+    """幂等补齐「路径分析」数据集类型 + 其转换规则。
+
+    既有库已灌过 4 类型/5 规则，ensure_dataset_types/ensure_convert_rules 仅在表空时写，
+    不会再补这一类；故单独幂等补齐，让 路径分析 在导入下拉/转换规则页可见、可走完整流水线。
+    需在 dataset_type 已存在后调用。
+    """
+    db = SessionLocal()
+    try:
+        t = db.query(DatasetType).filter(DatasetType.value == "path").first()
+        if not t:
+            seqs = [x.seq or 0 for x in db.query(DatasetType).all()]
+            t = DatasetType(value="path", label="路径分析", seq=(max(seqs) + 1 if seqs else 0), enabled=True)
+            db.add(t)
+            db.commit()
+            db.refresh(t)
+            print("数据集类型补齐：路径分析（path）")
+        has_rule = db.query(ConvertRule).filter(ConvertRule.datasetTypeId == t.id).first()
+        if not has_rule:
+            from app.services.dataset_convert import DEFAULT_RULES
+            r = next((x for x in DEFAULT_RULES if x["datasetTypeValue"] == "path"), None)
+            if r:
+                db.add(ConvertRule(
+                    datasetTypeId=t.id, typeMatch=r["typeMatch"], name=r["name"], priority=r["priority"],
+                    instruction=r["instruction"], inputAliases=r["inputAliases"],
+                    outputAliases=r["outputAliases"], outputFormat=r["outputFormat"], enabled=r["enabled"],
+                ))
+                db.commit()
+                print("转换规则补齐：路径还原研判")
+    finally:
+        db.close()
+
+
+def ensure_dataset_stage():
+    """流水线 P1 回填：旧数据集 stage 为空时按 desensitized/status 推断；旧脱敏规则补 maskType。
+
+    幂等：只处理为空的字段。兼容「先前已有数据、后加列」的既有库。
+    """
+    db = SessionLocal()
+    try:
+        changed = 0
+        for ds in db.query(Dataset).filter(Dataset.stage.is_(None)).all():
+            if ds.status == "已归档":
+                ds.stage = "已归档"
+            elif ds.desensitized:
+                ds.stage = "已脱敏"
+            elif ds.status == "已完成":
+                ds.stage = "已发布"
+            else:
+                ds.stage = "待标注"
+            changed += 1
+        # 旧脱敏规则按字段名补 maskType
+        kw = [("身份证", "idcard"), ("手机", "phone"), ("银行卡", "bankcard"),
+              ("姓名", "name"), ("邮箱", "email"), ("email", "email")]
+        for r in db.query(DesensitizeRule).filter(DesensitizeRule.maskType.is_(None)).all():
+            f = (r.field or "").lower()
+            r.maskType = next((mt for k, mt in kw if k.lower() in f), "custom")
+            changed += 1
+        if changed:
+            db.commit()
+            print(f"数据集流水线回填完成（stage / maskType）：{changed} 处")
+    finally:
+        db.close()
 
 
 # ========== 模型版本管理 ==========
@@ -309,14 +523,18 @@ def run_seed():
         n = seed_dataset(db)
         seed_task(db)
         seed_evaluation(db)
+        seed_eval_aggregates(db)
         seed_model(db)
         seed_config(db)
+        seed_dataset_types(db)   # 须在 convert_rules 之前：规则按类型 value 解析 FK
+        seed_convert_rules(db)
         seed_oplog(db)
         db.commit()
         print(f"种子数据写入完成（全部模块），datasets={n}")
     finally:
         db.close()
     ensure_users()
+    ensure_path_pipeline()   # 补齐「路径分析」类型+规则（DATASET_TYPE_DICT 已含，但显式幂等保证）
 
 
 def seed_if_empty():

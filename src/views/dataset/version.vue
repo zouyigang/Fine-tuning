@@ -86,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { DocumentCopy, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -122,7 +122,7 @@ async function rollback(v) {
   ElMessage.success(`已回滚至 ${v.version}`)
   await load()
 }
-onMounted(load)
+onActivated(load)
 </script>
 
 <style lang="scss" scoped>

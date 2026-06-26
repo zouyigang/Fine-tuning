@@ -38,7 +38,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onActivated } from 'vue'
 import { Upload } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
@@ -51,5 +51,5 @@ const page = ref(1)
 const pageSize = ref(10)
 const pagedCases = computed(() => data.cases.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
-onMounted(async () => Object.assign(data, await getSceneValidation()))
+onActivated(async () => Object.assign(data, await getSceneValidation()))
 </script>

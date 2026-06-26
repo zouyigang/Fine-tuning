@@ -32,6 +32,7 @@
             <el-button v-if="['running', 'paused'].includes(row.status)" link type="danger" size="small" :icon="CircleClose" @click="change(row, 'failed')">终止</el-button>
             <el-button v-if="row.status === 'failed'" link type="primary" size="small" :icon="RefreshRight" @click="retry(row)">断点重试</el-button>
             <el-button link type="info" size="small" :icon="Document">日志</el-button>
+            <el-button v-if="row.status !== 'running'" link type="danger" size="small" :icon="Delete" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -41,12 +42,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { Search, VideoPause, VideoPlay, CircleClose, RefreshRight, Document } from '@element-plus/icons-vue'
+import { ref, reactive, onActivated } from 'vue'
+import { Search, VideoPause, VideoPlay, CircleClose, RefreshRight, Document, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { TASK_STATUS } from '@/utils/dict'
-import { getTaskList, updateTaskStatus } from '@/api/modules/task'
+import { getTaskList, updateTaskStatus, deleteTask } from '@/api/modules/task'
 
 const loading = ref(false)
 const list = ref([])
@@ -71,5 +72,17 @@ async function retry(row) {
   ElMessage.success('已重新入队，等待引擎调度')
   await load()
 }
-onMounted(load)
+async function remove(row) {
+  await ElMessageBox.confirm(
+    `确认删除任务「${row.name}」？将一并清除其训练指标、日志与产物记录，且不可恢复。`,
+    '删除任务', { type: 'warning' }
+  )
+  try {
+    // 已产出模型版本/运行中的任务后端会拒绝并自动弹出原因
+    await deleteTask(row.id)
+    ElMessage.success('任务已删除')
+    await load()
+  } catch (e) { /* 失败原因已由响应拦截器提示 */ }
+}
+onActivated(load)
 </script>

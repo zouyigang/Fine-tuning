@@ -9,3 +9,8 @@ import service from '@/api/request'
 export function getDashboardOverview() {
   return service.get('/dashboard/overview')
 }
+
+// 实时字段（GPU 利用率/显存 + 进行中任务数 + 最近任务进度），供工作台 5s 轮询
+export function getDashboardLive() {
+  return service.get('/dashboard/live')
+}

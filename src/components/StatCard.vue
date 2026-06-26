@@ -6,6 +6,7 @@
     <div class="info">
       <div class="value">{{ value }}<span v-if="unit" class="unit">{{ unit }}</span></div>
       <div class="label">{{ label }}</div>
+      <div v-if="sub" class="sub">{{ sub }}</div>
     </div>
     <div v-if="trend !== null" class="trend" :class="trend >= 0 ? 'up' : 'down'">
       <el-icon><component :is="trend >= 0 ? 'Top' : 'Bottom'" /></el-icon>
@@ -21,7 +22,8 @@ defineProps({
   unit: { type: String, default: '' },
   icon: { type: String, default: 'DataLine' },
   bg: { type: String, default: '#2f54eb' },
-  trend: { type: Number, default: null }
+  trend: { type: Number, default: null },
+  sub: { type: String, default: '' }
 })
 </script>
 
@@ -65,6 +67,14 @@ defineProps({
   font-size: 13px;
   color: #8a919f;
   margin-top: 4px;
+}
+.sub {
+  font-size: 12px;
+  color: #a3a8b3;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .trend {
   position: absolute;

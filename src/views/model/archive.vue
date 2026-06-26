@@ -42,7 +42,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -84,5 +84,5 @@ async function download(row) {
   await downloadModel(row.id)
   ElMessage.success('开始下载模型产物')
 }
-onMounted(load)
+onActivated(load)
 </script>

@@ -25,7 +25,9 @@ services:
       DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root1234}@mysql:3306/fine_tuning?charset=utf8mb4
       JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
       CORS_ORIGINS: http://localhost:5180
-      AUTO_SEED: "true"
+      # false：只保留真实产生的数据（账号 + 评估参考由 ensure_* 幂等保证）；
+      # 改 true 可重新灌入演示种子（库为空时）。
+      AUTO_SEED: "false"
       STORAGE_DIR: /data/storage
     ports:
       - "8000:8000"

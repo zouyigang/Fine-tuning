@@ -49,6 +49,14 @@ def save_bytes(subdir: str, filename: str, data: bytes) -> tuple[str, str, int]:
     return stored, abspath, len(data)
 
 
+def reserve_path(subdir: str, filename: str) -> tuple[str, str]:
+    """预留一个存储名+绝对路径（不写内容），供流式写入。返回 (磁盘存储名, 绝对路径)。"""
+    folder = ensure_dir(subdir)
+    safe = _safe_name(filename)
+    stored = f"{datetime.now():%Y%m%d%H%M%S}_{uuid.uuid4().hex[:8]}_{safe}"
+    return stored, os.path.join(folder, stored)
+
+
 def count_rows(abspath: str) -> int:
     """估算样本量：.json 解析条目数；其余按非空行计数。失败返回 0。"""
     try:

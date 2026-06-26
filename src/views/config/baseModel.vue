@@ -52,7 +52,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -88,5 +88,5 @@ async function save() {
   ElMessage.success('保存成功')
   load()
 }
-onMounted(load)
+onActivated(load)
 </script>

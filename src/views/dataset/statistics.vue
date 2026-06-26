@@ -45,7 +45,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import BaseChart from '@/components/BaseChart.vue'
@@ -57,7 +57,7 @@ const data = reactive({ overview: null, entityDist: [], typeDist: [], suggestion
 async function load() {
   Object.assign(data, await getDatasetStatistics(datasetId.value))
 }
-onMounted(load)
+onActivated(load)
 
 const barOption = computed(() => ({
   tooltip: { trigger: 'axis' },

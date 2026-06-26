@@ -95,22 +95,23 @@ def _load_rows(abspath: str) -> list:
     return []
 
 
-def register_dataset(name: str, abspath: str, ds_type: str | None = None) -> str:
+def register_dataset(name: str, abspath: str, ds_type: str | None = None,
+                     rules: list | None = None) -> str:
     """把数据集文件注册进 LF data/dataset_info.json，返回数据集名。
 
     标准格式直通：
     - alpaca: {instruction,input,output}
     - sharegpt: {conversations:[...]}
     - prompt_response: {prompt,response} → 映射为 alpaca(instruction/output)
-    非标准格式（M2）：按业务类型 ds_type 调 dataset_convert 转成 alpaca 再注册；
-    仍无法转换则抛 ValueError（由调用方转成失败原因）。
+    非标准格式（M2）：按业务类型 ds_type + 转换规则 rules 调 dataset_convert 转成
+    alpaca 再注册；rules 缺省用内置默认规则；仍无法转换则抛 ValueError。
     """
     rows = _load_rows(abspath)
     fmt = _detect_format(rows)
     if fmt == "unknown":
-        # M2：业务原始 schema → alpaca
+        # M2：业务原始 schema → alpaca（规则可由 convert_rule 表驱动）
         from app.services import dataset_convert
-        samples, note = dataset_convert.convert(rows, ds_type)
+        samples, note = dataset_convert.convert(rows, ds_type, rules=rules)
         if not samples:
             raise ValueError(note)
         data_dir = _lf_data_dir()
@@ -218,7 +219,9 @@ def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
         "dataset_dir": _lf_data_dir(),
         "template": template,
         "cutoff_len": int(hp.get("maxLen") or 1024),
-        "overwrite_cache": True,
+        # 复用分词缓存：同一数据集重训/续训跳过重新 tokenize（大数据省时间）。
+        # 续训(resume)时强制不覆盖；首训也复用缓存（数据集发布后内容已冻结，安全）。
+        "overwrite_cache": False,
         "preprocessing_num_workers": 4,
         "output_dir": output_dir,
         "logging_steps": int(hp.get("loggingSteps") or 5),
