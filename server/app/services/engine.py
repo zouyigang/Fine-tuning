@@ -182,10 +182,19 @@ class TrainingManager:
             if not t or t.status != "pending":
                 return
             try:
+                # QLoRA 预检：bitsandbytes 无匹配 CUDA 的 4-bit 后端时直接清晰失败，
+                # 不浪费一次注定失败的子进程（错误日志也更可读）。
+                if (t.method or "").lower() == "qlora":
+                    okq, why = ec.qlora_supported()
+                    if not okq:
+                        raise ValueError(
+                            f"QLoRA 不可用：{why}。请改用 LoRA，"
+                            f"或安装与当前 CUDA 匹配的 bitsandbytes（含 4-bit 量化后端）。"
+                        )
                 model_path = ec.resolve_model_path(t.baseModel)
                 if not model_path:
                     raise ValueError(f"未在 MODELS_DIR 找到基础模型「{t.baseModel}」的离线权重")
-                dataset_key = self._prepare_dataset(db, t)
+                dataset_key, val_key = self._prepare_dataset(db, t)
                 template = ec.template_for(t.baseModel)
                 # 断点续训：输出目录已有 checkpoint（多为重试场景）则从断点恢复
                 prev_out = os.path.join(settings.RUNS_DIR, str(t.id), "output")
@@ -193,7 +202,7 @@ class TrainingManager:
                 yaml_path, output_dir = ec.build_train_yaml(
                     task_id=t.id, model_path=model_path, dataset_key=dataset_key,
                     template=template, method=(t.method or "lora"), hp=t.hyperparams or {},
-                    resume=resume,
+                    resume=resume, val_key=val_key,
                 )
                 if resume:
                     _log(db, t.id, "INFO", "检测到已有 checkpoint，将从断点续训")
@@ -249,35 +258,44 @@ class TrainingManager:
             return [settings.LLAMAFACTORY_BIN, verb, yaml_path]
         return [sys.executable, "-m", "llamafactory.cli", verb, yaml_path]
 
-    def _prepare_dataset(self, db, t: TrainTask) -> str:
-        """把任务关联的上传文件注册为 LF 数据集，返回数据集名。
+    def _prepare_dataset(self, db, t: TrainTask) -> tuple[str, str | None]:
+        """把任务关联数据集的训练文件注册为 LF 数据集，返回 (train_key, val_key)。
 
-        M1：用任务 dataset 字段匹配最近一次该数据集的上传文件。匹配不到时
-        回退 LF 内置 demo 数据集 alpaca_zh_demo，保证链路可跑通。
+        发布时已按比例切分：训练读 train 切分；若存在 val 切分则一并注册作 LF 验证集
+        （训练曲线产出 eval_loss）。未切分的旧数据回退整份（val_key=None）。
+        匹配不到任何文件时回退 LF 内置 demo 数据集，保证链路可跑通。
         """
-        from app.models.dataset import DatasetFile, Dataset
+        from app.models.dataset import Dataset
         from app.core import storage as st
 
-        # 优先：dataset 字段是数据集 id 或名称 → 找其上传文件
-        rec = None
         ds_name = t.dataset or ""
         ds = None
         if ds_name.isdigit():
             ds = db.get(Dataset, int(ds_name))
         if ds is None and ds_name:
             ds = db.scalars(select(Dataset).where(Dataset.name == ds_name)).first()
+
+        rec = val_rec = None
         if ds is not None:
-            # 按任务模型类型选训练文件：实体识别→NER 文件 / 关系抽取→关系文件
-            # （「实体关系标注」发布时已分别产出两份）；其它类型回退最新文件。
+            # 按任务模型类型选训练文件：实体识别→NER / 关系抽取→关系；其它回退。
             from app.crud import dataset as ds_crud
-            rec = ds_crud.dataset_file_for_task(db, ds.id, t.modelType)
+            rec = ds_crud.dataset_file_for_task(db, ds.id, t.modelType, split="train")
+            val_rec = ds_crud.dataset_file_for_task(db, ds.id, t.modelType, split="val")
         if rec is not None:
-            abspath = st.abspath_of("datasets", rec.storedName)
             from app.crud import convert_rule as rule_crud
             rules = rule_crud.load_rules_for_type(db, ds.type)
-            return ec.register_dataset(f"ds{ds.id}_{rec.variant or 'main'}", abspath, ds_type=ds.type, rules=rules)
-        _log(db, t.id, "WARN", f"未找到数据集「{ds_name}」的上传文件，回退内置 demo 数据集")
-        return ec.ensure_demo_dataset()
+            base_key = f"ds{ds.id}_{rec.variant or 'main'}"
+            train_key = ec.register_dataset(
+                base_key, st.abspath_of("datasets", rec.storedName), ds_type=ds.type, rules=rules)
+            val_key = None
+            if val_rec is not None and val_rec.id != rec.id:
+                val_key = ec.register_dataset(
+                    f"{base_key}_val", st.abspath_of("datasets", val_rec.storedName),
+                    ds_type=ds.type, rules=rules)
+                _log(db, t.id, "INFO", f"启用验证集（{val_rec.rows} 条）参与训练评估")
+            return train_key, val_key
+        _log(db, t.id, "WARN", f"未找到数据集「{ds_name}」的训练文件，回退内置 demo 数据集")
+        return ec.ensure_demo_dataset(), None
 
     # ---- 监控 ----
     def _pump_stdout(self, task_id: int, proc: subprocess.Popen):

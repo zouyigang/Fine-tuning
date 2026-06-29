@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.response import ok, err
 from app.deps import enforce_rbac
-from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log, user, screen
+from app.routers import dataset, auth, task, evaluation, model, config, dashboard, log, user, screen, inference
 from app.core.oplog import operation_log_middleware
 
 
@@ -49,6 +49,9 @@ async def lifespan(app: FastAPI):
         from app.services.trainer import start_scheduler
         start_scheduler()
     yield
+    # 关闭时回收所有推理 worker 子进程，释放显存
+    from app.services.inference import manager as infer_manager
+    infer_manager.shutdown_all()
 
 
 app = FastAPI(title="模型微调通用平台 API", version="0.1.0", lifespan=lifespan)
@@ -78,6 +81,7 @@ app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(enforc
 app.include_router(screen.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 app.include_router(log.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 app.include_router(user.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
+app.include_router(inference.router, prefix="/api", dependencies=[Depends(enforce_rbac)])
 
 
 @app.get("/api/health")

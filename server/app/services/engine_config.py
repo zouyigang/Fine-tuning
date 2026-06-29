@@ -192,11 +192,56 @@ def has_checkpoint(output_dir: str) -> bool:
                for d in os.listdir(output_dir))
 
 
+def qlora_supported() -> tuple[bool, str]:
+    """QLoRA(4-bit) 依赖 bitsandbytes 的 CUDA 后端：需有与当前 torch CUDA 版本匹配的二进制。
+
+    返回 (ok, reason)。常见失败：torch 为新 CUDA（如 cu130）而 bitsandbytes 仅含旧版（≤cu129）
+    二进制 → 找不到 libbitsandbytes_cuda130，QLoRA 必然失败（LoRA 不受影响）。
+    只做文件级探测（不真正 import bitsandbytes，避免其 CUDA 初始化在主进程抛错/留状态）。
+    """
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return False, "未检测到可用 GPU（CUDA 不可用）"
+        cu_ver = torch.version.cuda or ""        # 如 '13.0'
+    except Exception as e:  # pragma: no cover
+        return False, f"torch 不可用：{e}"
+    # 允许用 BNB_CUDA_VERSION 显式指定要加载的 bitsandbytes 二进制版本（与 bnb 加载逻辑一致），
+    # 便于已自行补齐对应 CUDA 运行库的环境绕过默认探测。
+    override = os.environ.get("BNB_CUDA_VERSION", "").strip()
+    cu_tag = override or cu_ver.replace(".", "")  # 如 '130'
+    if not cu_tag:
+        return True, ""  # CPU 版 torch 不在此拦（也不应跑 qlora）
+    import importlib.util
+    import glob
+    spec = importlib.util.find_spec("bitsandbytes")
+    if spec is None or not spec.submodule_search_locations:
+        return False, "未安装 bitsandbytes（QLoRA 需要它做 4-bit 量化）"
+    bnb_dir = list(spec.submodule_search_locations)[0]
+    base = os.path.join(bnb_dir, f"libbitsandbytes_cuda{cu_tag}")
+    if glob.glob(base + ".dll") or glob.glob(base + ".so"):
+        return True, ""
+    found = sorted(os.path.basename(p) for p in glob.glob(os.path.join(bnb_dir, "libbitsandbytes_cuda*")))
+    return False, (f"bitsandbytes {_bnb_version()} 缺少匹配 CUDA {cu_ver} 的二进制"
+                   f"（需 libbitsandbytes_cuda{cu_tag}，现有：{', '.join(found) or '无'}）")
+
+
+def _bnb_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("bitsandbytes")
+    except Exception:
+        return "?"
+
+
 def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
-                     template: str, method: str, hp: dict, resume: bool = False) -> tuple[str, str]:
+                     template: str, method: str, hp: dict, resume: bool = False,
+                     val_key: str | None = None) -> tuple[str, str]:
     """生成 LF 训练 YAML，落盘到 RUNS_DIR/{task_id}/，返回 (yaml路径, 输出目录)。
 
     resume=True：从 output_dir 已有 checkpoint 续训（不覆盖输出目录）。
+    val_key：发布时切分出的验证集（已注册的 LF 数据集名）；给定则按 epoch 评估，
+    产出 eval_loss 验证曲线（监控页 val_loss）。
     """
     hp = hp or {}
     run_dir = os.path.abspath(os.path.join(settings.RUNS_DIR, str(task_id)))
@@ -245,6 +290,11 @@ def build_train_yaml(*, task_id: int, model_path: str, dataset_key: str,
         cfg["quantization_bit"] = 4
     if resume:
         cfg["resume_from_checkpoint"] = True
+    if val_key:
+        # 发布切分出的验证集：每个 epoch 末评估，产出 eval_loss 验证曲线
+        cfg["eval_dataset"] = val_key
+        cfg["per_device_eval_batch_size"] = 1
+        cfg["eval_strategy"] = "epoch"
 
     yaml_path = os.path.join(run_dir, "train.yaml")
     with open(yaml_path, "w", encoding="utf-8") as f:

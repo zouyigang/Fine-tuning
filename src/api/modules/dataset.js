@@ -74,9 +74,10 @@ export function runDesensitize(datasetId) {
   return service.post('/dataset/desensitize/run', { datasetId })
 }
 
-// 发布为可训练数据集（已脱敏 → 已发布 + 定版）
-export function publishDataset(datasetId) {
-  return service.post(`/dataset/${datasetId}/publish`)
+// 发布为可训练数据集（已脱敏 → 已发布 + 定版）。
+// ratios: { trainRatio, valRatio, testRatio } 百分比，默认 80/10/10；训练读 train(+val)、评估读 test。
+export function publishDataset(datasetId, ratios) {
+  return service.post(`/dataset/${datasetId}/publish`, ratios)
 }
 
 // 下载该数据集最终训练数据（发布后的 alpaca jsonl）。

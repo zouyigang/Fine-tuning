@@ -132,3 +132,6 @@ class DatasetFile(Base):
     # 训练文件子类型：同一标注可发布出多份训练集（如「实体关系标注」既能训 NER 又能训关系抽取）。
     # None=单一训练文件；'ner'=命名实体；'relation'=关系三元组。引擎按任务模型类型选对应文件。
     variant = Column(String(16))
+    # 训练/验证/测试切分：发布时按比例切分。None=未切分(旧数据，整份)；
+    # 'train'=训练集(引擎训练用)；'val'=验证集(LF 验证曲线)；'test'=测试集(评估引擎用)。
+    split = Column(String(8))

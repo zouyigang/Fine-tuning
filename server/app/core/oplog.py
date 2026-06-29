@@ -47,7 +47,13 @@ _RULES = [
     ("POST", r"^/api/model/archive/clean$", "模型版本", "批量清理归档模型"),
     ("POST", r"^/api/model/\d+/clean$", "模型版本", "清理归档模型"),
     ("POST", r"^/api/model/\d+/restore$", "模型版本", "恢复归档模型"),
+    ("DELETE", r"^/api/model/\d+$", "模型版本", "删除模型版本"),
+    ("POST", r"^/api/evaluation/run$", "模型效果评估", "运行模型评估"),
+    ("POST", r"^/api/evaluation/benchmark/run$", "模型效果评估", "运行基准对比"),
+    ("POST", r"^/api/evaluation/scene/run$", "模型效果评估", "运行场景验证"),
+    ("POST", r"^/api/evaluation/review/sample$", "模型效果评估", "复核抽样"),
     ("POST", r"^/api/evaluation/reports$", "模型效果评估", "生成评估报告"),
+    ("DELETE", r"^/api/evaluation/reports/\d+$", "模型效果评估", "删除评估报告"),
     ("POST", r"^/api/evaluation/review-results$", "模型效果评估", "提交复核结果"),
     ("POST", r"^/api/config/base-models$", "微调配置", "保存基础模型"),
     ("POST", r"^/api/config/hyper-templates$", "微调配置", "保存超参模板"),
@@ -108,7 +114,8 @@ def record(db, *, username, real_name, module, action, method, path, ip, status,
 # 仅记录这些写操作（GET 只读不记）
 _LOG_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
 # 这些写方法路径实为只读（如试转换预览），不计入审计
-_SKIP_PATHS = {"/api/auth/login", "/api/config/convert-rules/preview", "/api/dataset/desensitize/preview"}
+_SKIP_PATHS = {"/api/auth/login", "/api/config/convert-rules/preview", "/api/dataset/desensitize/preview",
+               "/api/inference/chat", "/api/inference/unload"}
 
 
 async def operation_log_middleware(request, call_next):

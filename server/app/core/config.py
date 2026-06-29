@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # 最大并发训练数（一般 = 可用 GPU 数）
     MAX_CONCURRENT_TRAINS: int = 1
 
+    # ---- 推理 / 对话对比（评估模块）----
+    # 同时常驻的推理 worker 上限（每个占一份模型显存），超出按 LRU 卸载
+    MAX_INFER_WORKERS: int = 2
+    # 等待 worker 加载完模型（连得上 /health）的超时秒数
+    INFER_LOAD_TIMEOUT: int = 600
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]

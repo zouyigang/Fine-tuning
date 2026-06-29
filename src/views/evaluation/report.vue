@@ -19,11 +19,12 @@
         </el-table-column>
         <el-table-column prop="creator" label="生成人" width="90" />
         <el-table-column prop="createdAt" label="生成时间" width="120" />
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="270" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="preview(row)">预览</el-button>
             <el-button link type="primary" size="small" @click="doExport(row, 'pdf')">导出 PDF</el-button>
             <el-button link type="primary" size="small" @click="doExport(row, 'excel')">导出 Excel</el-button>
+            <el-button link type="danger" size="small" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -82,9 +83,9 @@
 <script setup>
 import { ref, reactive, onActivated } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getReportList, generateReport, exportReport } from '@/api/modules/evaluation'
+import { getReportList, generateReport, exportReport, deleteReport } from '@/api/modules/evaluation'
 import { getModelList } from '@/api/modules/model'
 
 const loading = ref(false)
@@ -132,6 +133,15 @@ function preview(row) {
 async function doExport(row, format) {
   await exportReport(row.id, format)
   ElMessage.success(`已导出 ${format === 'excel' ? 'Excel' : 'PDF'} 报告`)
+}
+async function remove(row) {
+  await ElMessageBox.confirm(`确认删除报告「${row.name}」？删除后不可恢复。`, '删除评估报告', { type: 'warning' })
+  try {
+    await deleteReport(row.id)
+    ElMessage.success('报告已删除')
+    if (list.value.length === 1 && query.page > 1) query.page -= 1
+    await load()
+  } catch (e) { /* 失败原因已由响应拦截器提示 */ }
 }
 onActivated(async () => {
   await load()

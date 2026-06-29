@@ -65,6 +65,16 @@ def get_report(db: Session, report_id: int) -> EvalReport | None:
     return db.get(EvalReport, report_id)
 
 
+def delete_report(db: Session, report_id: int) -> bool:
+    """删除一份评估报告；不存在返回 False。"""
+    rep = db.get(EvalReport, report_id)
+    if not rep:
+        return False
+    db.delete(rep)
+    db.commit()
+    return True
+
+
 def all_error_cases(db: Session, error_type: str = ""):
     """导出用：返回全部错误案例（不分页）。"""
     stmt = select(ErrorCase)
@@ -121,6 +131,9 @@ def submit_review_results(db: Session, results: list[dict]) -> int:
 
 # ---- 聚合分析（读 DB 表；数据可维护、随模型增删，二期由评估引擎写入）----
 def metrics(db: Session, model_type: str = "ner") -> dict:
+    # 指标按归一化类型码（ocr/ner/...）落库，查询同样归一化，兼容传入中文标签或别名
+    from app.services.metrics_compute import norm_model_type
+    model_type = norm_model_type(model_type)
     ms = db.scalars(
         select(EvalMetric).where(EvalMetric.modelType == model_type).order_by(EvalMetric.seq)).all()
     pcs = db.scalars(
@@ -132,18 +145,23 @@ def metrics(db: Session, model_type: str = "ner") -> dict:
 
 
 def benchmark(db: Session) -> dict:
+    """基准对比：current=微调模型，prod=基座模型（真实评估引擎写入）。
+
+    历史最优(hist) 仅当数据含该列时附带（兼容旧种子的三模型对比）。
+    """
     rows = db.scalars(select(BenchmarkResult).order_by(BenchmarkResult.seq)).all()
     dims = [r.dim for r in rows]
     cur = [r.current for r in rows]
     prod = [r.prod for r in rows]
-    hist = [r.hist for r in rows]
+    models = [
+        {"name": "微调模型", "values": cur},
+        {"name": "基座模型", "values": prod},
+    ]
+    if any(r.hist is not None for r in rows):
+        models.append({"name": "历史最优模型", "values": [r.hist for r in rows]})
     return {
         "dims": dims,
-        "models": [
-            {"name": "本次微调模型", "values": cur},
-            {"name": "当前生产模型", "values": prod},
-            {"name": "历史最优模型", "values": hist},
-        ],
+        "models": models,
         "compare": [
             {"dim": d, "current": cur[i], "prod": prod[i], "diff": round((cur[i] or 0) - (prod[i] or 0), 1)}
             for i, d in enumerate(dims)

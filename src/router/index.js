@@ -63,6 +63,7 @@ export const asyncRoutes = [
       { path: 'scene', name: 'EvalScene', component: () => import('@/views/evaluation/scene.vue'), meta: { title: '真实业务场景验证', icon: 'Aim' } },
       { path: 'review', name: 'EvalReview', component: () => import('@/views/evaluation/review.vue'), meta: { title: '人工复核评估', icon: 'View' } },
       { path: 'errors', name: 'EvalErrors', component: () => import('@/views/evaluation/errors.vue'), meta: { title: '错误案例分析', icon: 'WarningFilled' } },
+      { path: 'playground', name: 'EvalPlayground', component: () => import('@/views/evaluation/playground.vue'), meta: { title: '模型对话对比', icon: 'ChatDotRound' } },
       { path: 'report', name: 'EvalReport', component: () => import('@/views/evaluation/report.vue'), meta: { title: '评估报告生成', icon: 'Tickets' } }
     ]
   },

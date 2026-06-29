@@ -31,12 +31,13 @@
           <template #default="{ row }"><el-tag :type="MODEL_STATUS[row.status].type" size="small">{{ MODEL_STATUS[row.status].label }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="trainAt" label="训练时间" width="150" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small">详情</el-button>
             <el-button link type="primary" size="small">评估</el-button>
             <el-button v-if="row.status === 'evaluated'" link type="success" size="small">上线</el-button>
             <el-button link type="info" size="small">下载</el-button>
+            <el-button v-if="!['online', 'gray'].includes(row.status)" link type="danger" size="small" :icon="Delete" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -47,10 +48,11 @@
 
 <script setup>
 import { ref, reactive, onActivated } from 'vue'
-import { Search } from '@element-plus/icons-vue'
+import { Search, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODEL_STATUS } from '@/utils/dict'
-import { getModelList } from '@/api/modules/model'
+import { getModelList, deleteModel } from '@/api/modules/model'
 
 const loading = ref(false)
 const list = ref([])
@@ -64,6 +66,18 @@ async function load() {
   list.value = res.list
   total.value = res.total
   loading.value = false
+}
+async function remove(row) {
+  await ElMessageBox.confirm(
+    `确认删除模型版本「${row.name} ${row.version}」？将一并清除其导出/部署记录，且不可恢复。`,
+    '删除模型版本', { type: 'warning' }
+  )
+  try {
+    // 在线/灰度/核心模型后端会拒绝并自动弹出原因
+    await deleteModel(row.id)
+    ElMessage.success('模型版本已删除')
+    await load()
+  } catch (e) { /* 失败原因已由响应拦截器提示 */ }
 }
 onActivated(load)
 </script>

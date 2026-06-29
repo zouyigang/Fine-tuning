@@ -198,3 +198,12 @@ def restore_archive(model_id: int, db: Session = Depends(get_db)):
     if not crud.archive_restore(db, model_id):
         return err("模型不存在", code=4004)
     return ok({"success": True})
+
+
+@router.delete("/{model_id}")
+def delete_model(model_id: int, db: Session = Depends(get_db)):
+    """删除模型版本（在线/灰度/核心模型拒删；级联清理导出/部署记录、解除任务关联）。"""
+    ok_flag, msg = crud.delete_model(db, model_id)
+    if not ok_flag:
+        return err(msg, code=4001)
+    return ok({"success": True})

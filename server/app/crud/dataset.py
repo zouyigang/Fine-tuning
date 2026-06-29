@@ -245,30 +245,58 @@ def _model_type_variant(model_type: str | None) -> str | None:
     return None
 
 
-def train_file_by_variant(db: Session, dataset_id: int, variant: str):
-    """取指定子类型（ner/relation）的训练文件；无则返回 None。"""
+def train_file_by_variant(db: Session, dataset_id: int, variant: str, split: str | None = None):
+    """取指定子类型（ner/relation）的训练文件；可指定切分(train/val/test)。无则回退。"""
     if not variant:
         return None
-    return db.scalars(
-        select(DatasetFile).where(DatasetFile.dataset_id == dataset_id, DatasetFile.variant == variant)
-        .order_by(DatasetFile.id.desc())
-    ).first()
+    base = select(DatasetFile).where(DatasetFile.dataset_id == dataset_id,
+                                     DatasetFile.variant == variant)
+    if split:
+        hit = db.scalars(base.where(DatasetFile.split == split)
+                         .order_by(DatasetFile.id.desc())).first()
+        if hit:
+            return hit
+    return db.scalars(base.order_by(DatasetFile.id.desc())).first()
 
 
-def dataset_file_for_task(db: Session, dataset_id: int, model_type: str | None):
-    """按任务模型类型挑该数据集的训练文件：
-    实体识别→variant=ner，关系抽取→variant=relation；命中不到则回退无子类型文件，再回退最新。"""
+def dataset_file_for_task(db: Session, dataset_id: int, model_type: str | None,
+                          split: str | None = None):
+    """按任务模型类型挑该数据集的训练文件。
+
+    variant：实体识别→ner，关系抽取→relation；命中不到回退无子类型文件，再回退最新。
+    split：train/val/test。已切分数据集若缺所求切分则返回 None（不跨切分混用）；
+    未切分的旧数据则回退整份文件，保持既有行为。
+    """
     files = db.scalars(select(DatasetFile).where(DatasetFile.dataset_id == dataset_id)
                        .order_by(DatasetFile.id.desc())).all()
     if not files:
         return None
     variant = _model_type_variant(model_type)
-    if variant:
-        hit = next((f for f in files if (f.variant or "") == variant), None)
-        if hit:
-            return hit
-    plain = next((f for f in files if not f.variant), None)
-    return plain or files[0]
+
+    def pick(cands):
+        if not cands:
+            return None
+        if variant:
+            hit = next((f for f in cands if (f.variant or "") == variant), None)
+            if hit:
+                return hit
+        plain = next((f for f in cands if not f.variant), None)
+        return plain or cands[0]
+
+    if split:
+        want = [f for f in files if (f.split or "") == split]
+        if want:
+            return pick(want)
+        if any(f.split for f in files):   # 已切分但无此切分（如未设 val/test）
+            return None
+        return pick(files)                # 旧数据未切分：整份
+
+    # 未指定切分（训练/下载默认）：优先未切分(旧) → train 切分 → 任意
+    untagged = [f for f in files if not f.split]
+    if untagged:
+        return pick(untagged)
+    train = [f for f in files if (f.split or "") == "train"]
+    return pick(train) or pick(files)
 
 
 def list_samples(db: Session, dataset_id: int, page: int = 1, page_size: int = 10):
@@ -506,15 +534,132 @@ def _load_data_rows(abspath: str):
         return [ln.rstrip("\n") for ln in f if ln.strip()]
 
 
-def publish_dataset(db: Session, dataset_id: int, author: str = "system"):
-    """发布为可训练数据集：**发布时即把数据转成最终 alpaca 训练样本并落地**，
-    训练时直读、无需再转换。返回 (ok, message)。
+def _norm_ratios(ratios) -> tuple[int, int, int]:
+    """规整 (train,val,test) 百分比；非法/全 0 回退默认 80/10/10。"""
+    try:
+        tr, va, te = (max(0, int(x)) for x in ratios)
+    except Exception:
+        return (80, 10, 10)
+    return (tr, va, te) if (tr + va + te) > 0 else (80, 10, 10)
 
+
+def _assign_splits(n: int, ratios: tuple[int, int, int]) -> list[str]:
+    """打乱后按比例切分，返回长度 n 的 split 标签列表。固定种子可复现。"""
+    import random as _r
+    tr, va, te = ratios
+    s = tr + va + te
+    idx = list(range(n))
+    _r.Random(42).shuffle(idx)
+    n_tr = round(n * tr / s)
+    n_va = round(n * va / s)
+    out = ["test"] * n
+    for i in idx[:n_tr]:
+        out[i] = "train"
+    for i in idx[n_tr:n_tr + n_va]:
+        out[i] = "val"
+    return out
+
+
+def _write_alpaca_splits(db, dataset_id: int, alpaca: list, ratios, variant: str | None = None):
+    """把 alpaca 行按比例切分，各 split 写一份 dataset_file（带 split 标记）。返回 [(split,count)]。"""
+    import json
+    from app.core import storage as st
+    if not alpaca:
+        return []
+    assign = _assign_splits(len(alpaca), ratios)
+    buckets: dict = {"train": [], "val": [], "test": []}
+    for row, sp in zip(alpaca, assign):
+        buckets[sp].append(row)
+    vtag = f"_{variant}" if variant else ""
+    produced = []
+    for sp in ("train", "val", "test"):
+        rows = buckets[sp]
+        if not rows:
+            continue
+        payload = "\n".join(json.dumps(r, ensure_ascii=False) for r in rows).encode("utf-8")
+        stored, _abspath, size = st.save_bytes("datasets", f"train_ds{dataset_id}{vtag}_{sp}.jsonl", payload)
+        db.add(DatasetFile(
+            dataset_id=dataset_id, fileName=f"train_ds{dataset_id}{vtag}_{sp}_alpaca.jsonl",
+            storedName=stored, size=size, rows=len(rows), variant=variant, split=sp,
+            uploadedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ))
+        produced.append((sp, len(rows)))
+    return produced
+
+
+def _split_stream_file(db, dataset_id: int, combined_abspath: str, ratios) -> list:
+    """对已转换的大文件按行流式切分到 train/val/test（内存恒定）。返回 [(split,count)]。"""
+    import os
+    from app.core import storage as st
+    tr, va, te = ratios
+    s = tr + va + te
+    rmap = {"train": tr, "val": va, "test": te}
+    counts = {"train": 0, "val": 0, "test": 0}
+    paths, writers = {}, {}
+    for sp, ri in rmap.items():
+        if ri <= 0:
+            continue
+        stored, abspath = st.reserve_path("datasets", f"train_ds{dataset_id}_{sp}.jsonl")
+        paths[sp] = (stored, abspath)
+        writers[sp] = open(abspath, "w", encoding="utf-8")
+    n = 0
+
+    def choose():
+        nonlocal n
+        n += 1
+        best, best_def = None, -1e18
+        for sp in writers:
+            deficit = n * rmap[sp] / s - counts[sp]
+            if deficit > best_def:
+                best_def, best = deficit, sp
+        counts[best] += 1
+        return best
+
+    try:
+        with open(combined_abspath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    writers[choose()].write(line + "\n")
+    finally:
+        for w in writers.values():
+            w.close()
+    produced = []
+    for sp, (stored, abspath) in paths.items():
+        if counts[sp] == 0:
+            try:
+                os.remove(abspath)
+            except OSError:
+                pass
+            continue
+        db.add(DatasetFile(
+            dataset_id=dataset_id, fileName=f"train_ds{dataset_id}_{sp}_alpaca.jsonl",
+            storedName=stored, size=os.path.getsize(abspath), rows=counts[sp], split=sp,
+            uploadedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ))
+        produced.append((sp, counts[sp]))
+    return produced
+
+
+def _splits_note(produced: list) -> str:
+    """[(split,count)] → '训练X/验证Y/测试Z'。"""
+    label = {"train": "训练", "val": "验证", "test": "测试"}
+    agg: dict = {}
+    for sp, c in produced:
+        agg[sp] = agg.get(sp, 0) + c
+    return "/".join(f"{label[sp]}{agg[sp]}" for sp in ("train", "val", "test") if sp in agg)
+
+
+def publish_dataset(db: Session, dataset_id: int, author: str = "system",
+                    ratios=(80, 10, 10)):
+    """发布为可训练数据集：**发布时即把数据转成最终 alpaca 训练样本并按比例切分落地**，
+    训练读 train(+val 作验证)、评估引擎读 test。返回 (ok, message)。
+
+    ratios=(train,val,test) 百分比（默认 80/10/10，全 0 回退默认）。
     取数优先级 masked→labeled→raw（样本主干），无样本则回退最新上传文件；
-    套该数据集类型的转换规则生成 alpaca，落盘为最新 dataset_file（标准格式，引擎直通）。
+    套该数据集类型的转换规则生成 alpaca。
     """
     import os
-    import json
     from app.core import storage as st
     from app.crud import convert_rule as rule_crud
     from app.services import dataset_convert
@@ -527,6 +672,7 @@ def publish_dataset(db: Session, dataset_id: int, author: str = "system"):
     if ds.stage == "已归档":
         return False, "已归档数据集不可发布"
 
+    ratios = _norm_ratios(ratios)
     rules = rule_crud.load_rules_for_type(db, ds.type)
     samples = db.scalars(select(DatasetSample).where(DatasetSample.dataset_id == dataset_id)
                          .order_by(DatasetSample.idx)).all()
@@ -535,60 +681,50 @@ def publish_dataset(db: Session, dataset_id: int, author: str = "system"):
     variant_rules = _variant_rule_split(rules) if samples else {}
 
     if samples and variant_rules:
-        # 多子类型：同一标注分别套「命名实体」「关系三元组」规则各产一份训练文件，
-        # 引擎按任务模型类型（实体识别/关系抽取）选对应文件。
+        # 多子类型 × 切分：每个子类型各自按比例切 train/val/test
         rows = [(s.masked or s.labeled or s.raw or {}) for s in samples]
-        produced, total = [], 0
+        produced = []
         for variant, vrules in variant_rules.items():
             alpaca, _note = dataset_convert.convert(rows, ds.type, rules=vrules)
             if not alpaca:
                 continue
-            payload = "\n".join(json.dumps(r, ensure_ascii=False) for r in alpaca).encode("utf-8")
-            stored, _abspath, size = st.save_bytes("datasets", f"train_ds{dataset_id}_{variant}.jsonl", payload)
-            db.add(DatasetFile(
-                dataset_id=dataset_id, fileName=f"train_ds{dataset_id}_{variant}_alpaca.jsonl",
-                storedName=stored, size=size, rows=len(alpaca), variant=variant,
-                uploadedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            ))
-            produced.append(f"{variant}({len(alpaca)})")
-            total += len(alpaca)
+            sub = _write_alpaca_splits(db, dataset_id, alpaca, ratios, variant=variant)
+            produced += [(f"{variant}:{sp}", c) for sp, c in sub]
         if not produced:
             return False, "无法生成训练样本：标注中未识别出可训练字段（实体/关系）"
-        note = "多类型训练文件：" + "、".join(produced)
+        # 备注按子类型聚合展示
+        note = "多类型训练文件（" + "；".join(
+            f"{v}" for v in {p[0].split(':')[0] for p in produced}) + "）切分：" + \
+            _splits_note([(p[0].split(':')[1], p[1]) for p in produced])
     elif samples:
-        # 样本主干（标注流水线，封顶 SAMPLE_CAP）：内存转换 → 落盘（单一训练文件）
+        # 样本主干（标注流水线，封顶 SAMPLE_CAP）：内存转换 → 按比例切分落盘
         rows = [(s.masked or s.labeled or s.raw or {}) for s in samples]
-        alpaca, note = dataset_convert.convert(rows, ds.type, rules=rules)
+        alpaca, conv_note = dataset_convert.convert(rows, ds.type, rules=rules)
         if not alpaca:
-            return False, f"无法生成训练样本：{note}"
-        payload = "\n".join(json.dumps(r, ensure_ascii=False) for r in alpaca).encode("utf-8")
-        stored, _abspath, size = st.save_bytes("datasets", f"train_ds{dataset_id}.jsonl", payload)
-        db.add(DatasetFile(
-            dataset_id=dataset_id, fileName=f"train_ds{dataset_id}_alpaca.jsonl",
-            storedName=stored, size=size, rows=len(alpaca),
-            uploadedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ))
+            return False, f"无法生成训练样本：{conv_note}"
+        produced = _write_alpaca_splits(db, dataset_id, alpaca, ratios)
+        note = _splits_note(produced)
     else:
-        # 无样本（外部已标注大文件直接导入）：流式转换，内存恒定，避免大文件 OOM
+        # 无样本（外部已标注大文件直接导入）：流式转换到临时文件 → 按行流式切分
         rec = db.scalars(select(DatasetFile).where(DatasetFile.dataset_id == dataset_id)
                          .order_by(DatasetFile.id.desc())).first()
         if not rec:
             return False, "数据集无可发布的样本"
-        stored, abspath = st.reserve_path("datasets", f"train_ds{dataset_id}.jsonl")
-        count, note = dataset_convert.convert_stream(
-            st.abspath_of("datasets", rec.storedName), abspath, ds.type, rules)
+        tmp_stored, tmp_abspath = st.reserve_path("datasets", f"train_ds{dataset_id}_combined.jsonl")
+        count, conv_note = dataset_convert.convert_stream(
+            st.abspath_of("datasets", rec.storedName), tmp_abspath, ds.type, rules)
         if count == 0:
             try:
-                os.remove(abspath)
+                os.remove(tmp_abspath)
             except OSError:
                 pass
-            return False, f"无法生成训练样本：{note}"
-        size = os.path.getsize(abspath)
-        db.add(DatasetFile(
-            dataset_id=dataset_id, fileName=f"train_ds{dataset_id}_alpaca.jsonl",
-            storedName=stored, size=size, rows=count,
-            uploadedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ))
+            return False, f"无法生成训练样本：{conv_note}"
+        produced = _split_stream_file(db, dataset_id, tmp_abspath, ratios)
+        try:
+            os.remove(tmp_abspath)   # 切分完成后删除合并临时文件
+        except OSError:
+            pass
+        note = _splits_note(produced)
 
     create_version(db, dataset_id, f"发布训练版本（{note}）", author)
     ds.stage = "已发布"

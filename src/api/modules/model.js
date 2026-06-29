@@ -14,6 +14,11 @@ export function updateModelStatus(id, status) {
   return service.put(`/model/${id}/status`, { status })
 }
 
+// 删除模型版本（在线/灰度/核心模型后端会拒绝并提示）
+export function deleteModel(id) {
+  return service.delete(`/model/${id}`)
+}
+
 // 灰度发布监控
 export function getGrayReleases() {
   return service.get('/model/gray-releases')

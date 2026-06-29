@@ -24,8 +24,8 @@
     <el-row :gutter="16" v-if="task">
       <el-col :xs="12" :md="6"><StatCard label="当前 Loss" :value="task.curLoss" icon="Bottom" bg="#f5222d" class="mb-16" /></el-col>
       <el-col :xs="12" :md="6"><StatCard label="当前准确率" :value="task.curAcc" unit="%" icon="Top" bg="#52c41a" class="mb-16" /></el-col>
-      <el-col :xs="12" :md="6"><StatCard label="GPU 利用率" :value="task.gpuUtil" unit="%" icon="Cpu" bg="#2f54eb" class="mb-16" /></el-col>
-      <el-col :xs="12" :md="6"><StatCard label="显存占用" :value="task.gpuMem" unit="GB" icon="Coin" bg="#fa8c16" class="mb-16" /></el-col>
+      <el-col :xs="12" :md="6"><StatCard label="GPU 利用率" :value="gpu.util" unit="%" icon="Cpu" bg="#2f54eb" class="mb-16" /></el-col>
+      <el-col :xs="12" :md="6"><StatCard label="显存占用" :value="gpu.memUsedGB" unit="GB" icon="Coin" bg="#fa8c16" :sub="gpu.sub" class="mb-16" /></el-col>
     </el-row>
 
     <el-row :gutter="16">
@@ -51,22 +51,24 @@ import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import BaseChart from '@/components/BaseChart.vue'
 import { getRunningTask, getTrainingCurve, getResourceUsage } from '@/api/modules/task'
+import { getDashboardLive } from '@/api/modules/dashboard'
 
 const task = ref(null)
+// GPU 利用率/显存与工作台同源（gpu_realtime：real 模式真实 pynvml，否则回退集群配置）
+const gpu = ref({ util: 0, memUsedGB: 0, sub: '显存 —' })
 const curve = reactive({ steps: [], loss: [], valLoss: [], acc: [] })
 const resource = reactive({ points: [], gpu: [], cpu: [], mem: [] })
 let timer = null
 
 async function refresh() {
   task.value = await getRunningTask()
+  gpu.value = (await getDashboardLive()).gpu
   Object.assign(curve, await getTrainingCurve())
   Object.assign(resource, await getResourceUsage())
 }
 
 onActivated(async () => {
-  task.value = await getRunningTask()
-  Object.assign(curve, await getTrainingCurve())
-  Object.assign(resource, await getResourceUsage())
+  await refresh()
   timer = setInterval(refresh, 2000)
 })
 onDeactivated(() => clearInterval(timer))

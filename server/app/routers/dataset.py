@@ -3,6 +3,7 @@
 注意：具体路径（/list、/versions 等）声明在 /{ds_id} 之前，避免被动态路由吞掉。
 """
 from fastapi import APIRouter, Depends, Query, File, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core import storage
@@ -271,11 +272,21 @@ def get_dataset_samples(
     return ok(page([SampleOut.model_validate(x) for x in items], total, page_no, page_size))
 
 
+class PublishIn(BaseModel):
+    """发布入参：训练/验证/测试切分比例（百分比，默认 80/10/10）。"""
+    trainRatio: int = 80
+    valRatio: int = 10
+    testRatio: int = 10
+
+
 @router.post("/{ds_id}/publish")
-def publish_dataset(ds_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """发布为可训练数据集：已脱敏 → 已发布 + 定版。"""
+def publish_dataset(ds_id: int, body: PublishIn | None = None,
+                    db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """发布为可训练数据集：已脱敏 → 已发布 + 定版，并按比例切分 train/val/test。"""
     author = current.real_name or current.username
-    ok_flag, msg = crud.publish_dataset(db, ds_id, author)
+    b = body or PublishIn()
+    ratios = (b.trainRatio, b.valRatio, b.testRatio)
+    ok_flag, msg = crud.publish_dataset(db, ds_id, author, ratios=ratios)
     if not ok_flag:
         return err(msg, code=4001)
     return ok({"success": True})

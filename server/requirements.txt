@@ -27,5 +27,8 @@ openpyxl>=3.1          # Excel(xlsx) 生成
 
 # 真实微调引擎（ENGINE_MODE=real）：调 LLaMA-Factory 跑训练
 # 注意：torch / llamafactory 体量大且需匹配 CUDA，单独按 docs/真实微调引擎方案.md 安装，不在此 pin
+# QLoRA(4-bit) 需 bitsandbytes，且其二进制必须含匹配当前 CUDA 的版本：
+#   CUDA 13（torch cu130 / Blackwell sm_120）需 bitsandbytes>=0.49.2（含 libbitsandbytes_cuda130）；
+#   旧版（≤0.46）无 cuda130 二进制 → QLoRA 必失败（引擎 qlora_supported 会提前拦截并提示）。LoRA 不依赖它。
 PyYAML>=6.0            # 生成 LF 训练 YAML 配置
 nvidia-ml-py>=12.0     # GPU 利用率/显存真实采样（pynvml）

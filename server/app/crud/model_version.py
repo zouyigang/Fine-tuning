@@ -4,7 +4,7 @@ import os
 import random
 from datetime import datetime
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete as sa_delete
 from sqlalchemy.orm import Session
 
 from app.core import storage
@@ -265,6 +265,33 @@ def deploy_model(db: Session, model_id: int, target_id: int, fmt: str, operator:
         "[4/4] 健康检查通过，服务已就绪 ✓",
     ]
     return True, logs
+
+
+def delete_model(db: Session, model_id: int):
+    """删除模型版本。返回 (ok, message)。
+
+    外键关联校验：
+      - 在线/灰度中的模型不可删（正对外服务），须先下线；
+      - 核心模型（F1>0.93）永久保留（与归档清理一致）。
+    级联清理：`model_export` / `model_deployment` 记录（model_id 关联）；
+    解除关联训练任务的 `modelVersionId`（任务本身保留，仅去掉悬挂引用）。
+    上线/回滚历史 `release_history`（按版本号、审计留痕）不删。
+    """
+    from app.models.task import TrainTask
+    m = db.get(ModelVersion, model_id)
+    if not m:
+        return False, "模型版本不存在"
+    if m.status in ("online", "gray"):
+        return False, "该模型正在线/灰度服务中，请先下线再删除"
+    if _is_permanent(m):
+        return False, "核心模型（F1>0.93）永久保留，不可删除"
+    db.execute(sa_delete(ModelExport).where(ModelExport.model_id == model_id))
+    db.execute(sa_delete(ModelDeployment).where(ModelDeployment.model_id == model_id))
+    for t in db.scalars(select(TrainTask).where(TrainTask.modelVersionId == model_id)).all():
+        t.modelVersionId = None
+    db.delete(m)
+    db.commit()
+    return True, ""
 
 
 def archive_clean(db: Session, model_id: int):

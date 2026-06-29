@@ -10,6 +10,28 @@ class ReportGenIn(BaseModel):
     format: str | None = None
 
 
+class EvalRunIn(BaseModel):
+    """运行真实评估入参：modelId 形如 mv:<id> 或 base:<名>。"""
+    modelId: str
+    datasetId: int
+    limit: int = 50
+
+
+class SceneRunIn(BaseModel):
+    """业务场景验证入参：一个模型在多个已发布测试集上各跑一遍，每个测试集为一个场景。"""
+    modelId: str
+    datasetIds: list[int] = []
+    limit: int = 50
+
+
+class ReviewSampleIn(BaseModel):
+    """人工复核抽样入参：真模型对测试集预测，入复核队列待人工判定。"""
+    modelId: str
+    datasetId: int
+    count: int = 10
+    reviewer: str | None = None
+
+
 class ReviewResultItem(BaseModel):
     id: int
     result: str
