@@ -46,17 +46,31 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
             <el-button link type="primary" size="small" @click="goAnnotate(row)">标注</el-button>
-            <!-- 实体关系标注：训练数据分 命名实体 / 关系三元组 两份，下拉选 -->
-            <el-dropdown v-if="row.stage === '已发布' && isEntityType(row.type)" trigger="click" @command="(v) => download(row, v)">
-              <el-button link type="success" size="small" :icon="Download">训练数据<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+            <!-- 实体关系标注：训练数据分 命名实体 / 关系三元组 两份，再各分 训练/验证/测试 切分 -->
+            <el-dropdown class="op-dl" v-if="row.stage === '已发布' && isEntityType(row.type)" trigger="click" @command="(v) => download(row, v)">
+              <el-button link type="success" size="small" :icon="Download">数据下载<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="relation">关系三元组</el-dropdown-item>
-                  <el-dropdown-item command="ner">命名实体（NER）</el-dropdown-item>
+                  <el-dropdown-item command="relation:train">关系三元组 · 训练集</el-dropdown-item>
+                  <el-dropdown-item command="relation:val">关系三元组 · 验证集</el-dropdown-item>
+                  <el-dropdown-item command="relation:test">关系三元组 · 测试集</el-dropdown-item>
+                  <el-dropdown-item command="ner:train" divided>命名实体 · 训练集</el-dropdown-item>
+                  <el-dropdown-item command="ner:val">命名实体 · 验证集</el-dropdown-item>
+                  <el-dropdown-item command="ner:test">命名实体 · 测试集</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-button v-else-if="row.stage === '已发布'" link type="success" size="small" :icon="Download" @click="download(row)">训练数据</el-button>
+            <!-- 其它类型：训练 / 验证 / 测试 三份切分 -->
+            <el-dropdown class="op-dl" v-else-if="row.stage === '已发布'" trigger="click" @command="(v) => download(row, v)">
+              <el-button link type="success" size="small" :icon="Download">数据下载<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="train">训练集</el-dropdown-item>
+                  <el-dropdown-item command="val">验证集</el-dropdown-item>
+                  <el-dropdown-item command="test">测试集</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-popconfirm title="确认删除该数据集？" @confirm="remove(row)">
               <template #reference><el-button link type="danger" size="small">删除</el-button></template>
             </el-popconfirm>
@@ -233,9 +247,14 @@ function goAnnotate(row) {
 function isEntityType(type) {
   return /实体|关系/.test(type || '')
 }
-async function download(row, variant = '') {
-  // 仅已发布数据集有最终 alpaca 训练文件；失败原因由下载工具/拦截器提示
-  try { await downloadTrainData(row.id, variant) } catch (e) { /* 已提示 */ }
+async function download(row, command = 'train') {
+  // command：'train'|'val'|'test'（普通类型）或 'relation:train' 等（实体关系，variant:split）
+  let variant = ''
+  let split = 'train'
+  if (command.includes(':')) [variant, split] = command.split(':')
+  else split = command || 'train'
+  // 比例为 0 的切分无文件，后端返回提示；其余正常下载
+  try { await downloadTrainData(row.id, variant, split) } catch (e) { /* 已提示 */ }
 }
 function onFileChange(file) {
   selectedFile.value = file.raw
@@ -297,6 +316,8 @@ onActivated(() => {
 </script>
 
 <style lang="scss" scoped>
+/* 下拉触发按钮与同行 link 按钮基线对齐（默认 el-dropdown 略偏上） */
+.op-dl { vertical-align: middle; }
 .lbl-sample {
   margin: 16px 0 6px;
   font-size: 13px;

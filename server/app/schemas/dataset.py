@@ -68,6 +68,7 @@ class RuleOut(BaseModel):
     enabled: bool
     maskType: str | None = "custom"
     pattern: str | None = None
+    replacement: str | None = None
 
 
 class AnnotationOut(BaseModel):
@@ -115,11 +116,23 @@ class RuleCreateIn(BaseModel):
     sample: str | None = "****"
     enabled: bool | None = True
     maskType: str | None = "custom"   # idcard/phone/bankcard/name/email/custom
-    pattern: str | None = None        # custom 时的正则
+    pattern: str | None = None        # 模式型留空回退内置默认；custom 为字段值正则
+    replacement: str | None = None    # 替换串（re.sub 模板，留空用内置默认 / ***）
 
 
 class RuleToggleIn(BaseModel):
     enabled: bool
+
+
+class RuleUpdateIn(BaseModel):
+    """部分更新：仅传需要改的字段；只传 enabled 即等价旧的切换启用。"""
+    field: str | None = None
+    rule: str | None = None
+    sample: str | None = None
+    enabled: bool | None = None
+    maskType: str | None = None
+    pattern: str | None = None
+    replacement: str | None = None
 
 
 class DesensitizeRunIn(BaseModel):

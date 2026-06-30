@@ -64,6 +64,11 @@ export function toggleDesensitizeRule(id, enabled) {
   return service.put(`/dataset/desensitize-rules/${id}`, { enabled })
 }
 
+// 编辑脱敏规则（部分更新：field/maskType/pattern/replacement 等）
+export function updateDesensitizeRule(id, payload) {
+  return service.put(`/dataset/desensitize-rules/${id}`, payload)
+}
+
 // 删除脱敏规则
 export function deleteDesensitizeRule(id) {
   return service.delete(`/dataset/desensitize-rules/${id}`)
@@ -82,10 +87,13 @@ export function publishDataset(datasetId, ratios) {
 
 // 下载该数据集最终训练数据（发布后的 alpaca jsonl）。
 // variant=ner/relation 可下载对应子类型（如「实体关系标注」分出的 命名实体 / 关系三元组）。
-export function downloadTrainData(datasetId, variant = '') {
+export function downloadTrainData(datasetId, variant = '', split = 'train') {
+  const params = {}
+  if (variant) params.variant = variant
+  if (split) params.split = split
   return downloadFile(`/dataset/${datasetId}/train-data/download`, {
-    params: variant ? { variant } : undefined,
-    fallback: `train-ds${datasetId}${variant ? '_' + variant : ''}.jsonl`
+    params,
+    fallback: `${variant ? variant + '_' : ''}${split}-ds${datasetId}.jsonl`
   })
 }
 

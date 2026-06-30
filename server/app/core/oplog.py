@@ -23,7 +23,7 @@ _RULES = [
     ("POST", r"^/api/dataset/upload$", "数据集管理", "上传数据集文件"),
     ("DELETE", r"^/api/dataset/\d+$", "数据集管理", "删除数据集"),
     ("POST", r"^/api/dataset/desensitize-rules$", "数据集管理", "新增脱敏规则"),
-    ("PUT", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "切换脱敏规则"),
+    ("PUT", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "更新脱敏规则"),
     ("DELETE", r"^/api/dataset/desensitize-rules/\d+$", "数据集管理", "删除脱敏规则"),
     ("POST", r"^/api/dataset/desensitize/run$", "数据集管理", "执行数据脱敏"),
     ("POST", r"^/api/dataset/\d+/publish$", "数据集管理", "发布数据集"),

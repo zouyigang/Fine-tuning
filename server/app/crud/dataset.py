@@ -212,6 +212,23 @@ def latest_dataset_file(db: Session, dataset_id: int):
                       .order_by(DatasetFile.id.desc())).first()
 
 
+def dataset_file_for_split(db: Session, dataset_id: int, split: str, variant: str | None = None):
+    """取指定切分(train/val/test)的训练文件（可限定 variant）；无则返回 None。"""
+    q = select(DatasetFile).where(DatasetFile.dataset_id == dataset_id, DatasetFile.split == split)
+    if variant:
+        q = q.where(DatasetFile.variant == variant)
+    return db.scalars(q.order_by(DatasetFile.id.desc())).first()
+
+
+def latest_train_file(db: Session, dataset_id: int):
+    """发布后的「训练分片(train)」文件——下载训练数据用。
+
+    发布会按 train/val/test 各写一份，latest_dataset_file 取到的是最后写的 test（小数据集常仅 1 条）；
+    训练数据应取 train 分片。无切分（旧数据/未发布）时回退最新文件。
+    """
+    return dataset_file_for_split(db, dataset_id, "train") or latest_dataset_file(db, dataset_id)
+
+
 # 转换规则的输出别名 → 训练文件子类型（NER / 关系抽取）
 _REL_OUT_KEYS = ("relations", "spo", "spo_list", "triples", "三元组", "关系")
 _NER_OUT_KEYS = ("entities", "entity", "ner", "实体", "标注")
@@ -424,6 +441,22 @@ def toggle_rule(db: Session, rule_id: int, enabled: bool) -> bool:
     return True
 
 
+def update_rule(db: Session, rule_id: int, payload: dict):
+    """部分更新一条脱敏规则（仅写入 payload 里出现的字段）；不存在返回 None。
+
+    兼容旧「切换启用」（只传 enabled）与新「编辑」（传 field/maskType/pattern/replacement 等）。
+    """
+    r = db.get(DesensitizeRule, rule_id)
+    if not r:
+        return None
+    for k in ("field", "rule", "sample", "enabled", "maskType", "pattern", "replacement"):
+        if k in payload:
+            setattr(r, k, payload[k])
+    db.commit()
+    db.refresh(r)
+    return r
+
+
 def delete_rule(db: Session, rule_id: int) -> bool:
     """删除一条脱敏规则。规则在脱敏执行时按需读取、无持久外键引用，故可直接删除。"""
     r = db.get(DesensitizeRule, rule_id)
@@ -448,7 +481,8 @@ def run_desensitize(db: Session, dataset_id: int):
         return False, 0
 
     rules = [
-        {"field": r.field, "maskType": r.maskType or "custom", "pattern": r.pattern, "enabled": True}
+        {"field": r.field, "maskType": r.maskType or "custom", "pattern": r.pattern,
+         "replacement": r.replacement, "enabled": True}
         for r in db.scalars(select(DesensitizeRule).where(DesensitizeRule.enabled == True)).all()  # noqa: E712
     ]
 
@@ -500,7 +534,8 @@ def preview_desensitize(db: Session, text: str) -> str:
     """用当前启用的脱敏规则对一段文本试脱敏，返回脱敏后文本（只读，不落库）。"""
     from app.services import desensitize as dz
     rules = [
-        {"field": r.field, "maskType": r.maskType or "custom", "pattern": r.pattern, "enabled": True}
+        {"field": r.field, "maskType": r.maskType or "custom", "pattern": r.pattern,
+         "replacement": r.replacement, "enabled": True}
         for r in db.scalars(select(DesensitizeRule).where(DesensitizeRule.enabled == True)).all()  # noqa: E712
     ]
     out, _hits = dz.apply([text or ""], rules)

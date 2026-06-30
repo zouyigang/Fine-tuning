@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     from scripts.seed import (
         ensure_users, ensure_eval_aggregates, ensure_convert_rules,
         ensure_dataset_types, ensure_convert_rule_links, ensure_dataset_stage,
-        ensure_path_pipeline,
+        ensure_path_pipeline, ensure_desensitize_patterns,
     )
     ensure_users()
     ensure_eval_aggregates()
@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
     ensure_convert_rule_links()  # 既有库补链：旧规则按 typeMatch 关联到 dataset_type
     ensure_path_pipeline()       # 幂等补齐「路径分析」类型 + 转换规则（既有库不会被表空种子覆盖）
     ensure_dataset_stage()       # 流水线 P1：回填旧数据 stage / 脱敏规则 maskType
+    ensure_desensitize_patterns()  # 把模式型脱敏内置正则/替换串落库，使其页面可见可改
     # 仅 AUTO_SEED 时灌入演示业务数据（数据集/任务/模型/评估记录等，库空才灌）
     if settings.AUTO_SEED:
         from scripts.seed import seed_if_empty

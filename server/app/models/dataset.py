@@ -53,9 +53,12 @@ class DesensitizeRule(Base):
     rule = Column(String(128))
     sample = Column(String(128))
     enabled = Column(Boolean, default=True)
-    # 可执行掩码类型：idcard/phone/bankcard/name/email/custom；custom 用 pattern(正则)
+    # 可执行掩码类型：idcard/phone/bankcard/name/email/custom
     maskType = Column("mask_type", String(16), default="custom")
+    # 正则（模式型 idcard/phone/bankcard/email 与 custom 通用）；模式型留空则回退内置默认
     pattern = Column(String(255))
+    # 替换串（re.sub 模板，支持 \1\2 反向引用）；留空则模式型用内置默认、custom 用 ***
+    replacement = Column(String(255))
 
 
 class AnnotationTask(Base):

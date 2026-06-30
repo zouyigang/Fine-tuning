@@ -24,6 +24,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install llamafactory==0.9.5
 
+# 2.5) bitsandbytes：QLoRA(4-bit) 微调必需，须含匹配 CUDA13 的二进制（libbitsandbytes_cuda130）。
+#      ≥0.49.2 起才带 cuda130 二进制；缺它 QLoRA 必失败（引擎 qlora_supported 会提前拦截）。LoRA 不依赖它。
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install "bitsandbytes>=0.49.2"
+
 # 3) 应用依赖（清华源；含 PyYAML / nvidia-ml-py 等）
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \

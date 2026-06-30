@@ -26,3 +26,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# GPU 微调用的离线基础模型权重（体量大，勿入库；默认放仓库根 ./models）
+models/

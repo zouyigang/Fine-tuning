@@ -377,6 +377,36 @@ def ensure_dataset_stage():
         db.close()
 
 
+def ensure_desensitize_patterns():
+    """把模式型脱敏规则(idcard/phone/bankcard/email)的内置正则/替换串回填到 DB，使其在页面可见可改。
+
+    幂等：仅填 pattern/replacement 为空的行，不覆盖用户已自定义的正则。须 replacement 列已存在
+    （迁移 0011 未应用的旧库直接跳过，待 alembic upgrade head 后生效）。
+    """
+    from sqlalchemy import inspect as sa_inspect
+    from app.services.desensitize import BUILTIN_PATTERNS
+    db = SessionLocal()
+    try:
+        cols = {c["name"] for c in sa_inspect(db.bind).get_columns("desensitize_rule")}
+        if "replacement" not in cols:
+            return  # 迁移未应用，跳过
+        changed = 0
+        for r in db.query(DesensitizeRule).filter(
+                DesensitizeRule.maskType.in_(list(BUILTIN_PATTERNS.keys()))).all():
+            pat, rep = BUILTIN_PATTERNS[r.maskType]
+            if not (r.pattern or "").strip():
+                r.pattern = pat
+                changed += 1
+            if not (r.replacement or "").strip():
+                r.replacement = rep
+                changed += 1
+        if changed:
+            db.commit()
+            print(f"脱敏内置正则回填完成：{changed} 处")
+    finally:
+        db.close()
+
+
 # ========== 模型版本管理 ==========
 MV_STATUS = ["evaluating", "evaluated", "gray", "online", "offline", "archived"]
 MV_TYPES = ["OCR 识别", "实体识别", "关系抽取", "事件构建", "风险预警"]

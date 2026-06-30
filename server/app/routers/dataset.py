@@ -22,7 +22,7 @@ from app.schemas.dataset import (
     PermissionOut,
     PermissionSaveIn,
     RuleCreateIn,
-    RuleToggleIn,
+    RuleUpdateIn,
     DesensitizeRunIn,
     DesensitizePreviewIn,
     AnnotationProgressIn,
@@ -158,10 +158,12 @@ def create_desensitize_rule(payload: RuleCreateIn, db: Session = Depends(get_db)
 
 
 @router.put("/desensitize-rules/{rule_id}")
-def toggle_desensitize_rule(rule_id: int, body: RuleToggleIn, db: Session = Depends(get_db)):
-    if not crud.toggle_rule(db, rule_id, body.enabled):
+def update_desensitize_rule(rule_id: int, body: RuleUpdateIn, db: Session = Depends(get_db)):
+    """更新脱敏规则：只传 enabled 即切换启用；传 field/maskType/pattern/replacement 即编辑。"""
+    rule = crud.update_rule(db, rule_id, body.model_dump(exclude_unset=True))
+    if not rule:
         return err("脱敏规则不存在", code=4004)
-    return ok({"success": True})
+    return ok(RuleOut.model_validate(rule))
 
 
 @router.delete("/desensitize-rules/{rule_id}")
@@ -245,19 +247,22 @@ def save_sample_label(sample_id: int, body: SampleLabelIn, db: Session = Depends
 
 
 @router.get("/{ds_id}/train-data/download")
-def download_train_data(ds_id: int, variant: str = "", db: Session = Depends(get_db)):
-    """下载该数据集最终训练数据文件（发布后为 alpaca jsonl）。
+def download_train_data(ds_id: int, variant: str = "", split: str = "train", db: Session = Depends(get_db)):
+    """下载该数据集某切分的 alpaca 数据文件（发布后产出）。
 
-    variant=ner/relation 时下载对应子类型训练文件（如「实体关系标注」分别产出的
-    命名实体 / 关系三元组）；不传或该子类型不存在时回退最新训练文件。
+    split=train/val/test（默认 train）。variant=ner/relation 时下载对应子类型文件
+    （「实体关系标注」分别产出命名实体 / 关系三元组）。文件不存在（如该切分比例为 0）返回 4004。
     """
-    rec = crud.train_file_by_variant(db, ds_id, variant) if variant else None
+    split = split or "train"
+    rec = crud.train_file_by_variant(db, ds_id, variant, split=split) if variant else None
     if rec is None:
-        rec = crud.latest_dataset_file(db, ds_id)
+        rec = crud.dataset_file_for_split(db, ds_id, split)
+    if rec is None and split == "train":
+        rec = crud.latest_train_file(db, ds_id)   # 旧数据/无切分回退
     if not rec:
-        return err("该数据集暂无可下载文件（请先发布）", code=4004)
+        return err(f"该数据集暂无 {split} 切分文件（请先发布，或该切分比例为 0）", code=4004)
     abspath = storage.abspath_of("datasets", rec.storedName)
-    return storage.file_response(abspath, rec.fileName or f"dataset-{ds_id}.jsonl", "application/jsonl")
+    return storage.file_response(abspath, rec.fileName or f"dataset-{ds_id}-{split}.jsonl", "application/jsonl")
 
 
 @router.get("/{ds_id}/samples")

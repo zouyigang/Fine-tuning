@@ -160,7 +160,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 MODELS_DIR=./models docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
-- 它把 backend 换成 CUDA 镜像（`server/Dockerfile.cuda`：torch/torchaudio/torchvision 2.11.0+cu130 + LLaMA-Factory 0.9.5）、置 `ENGINE_MODE=real`、`gpus: all`，并把宿主 `${MODELS_DIR}` 只读挂载到容器 `/data/models`。
+- 它把 backend 换成 CUDA 镜像（`server/Dockerfile.cuda`：torch/torchaudio/torchvision 2.11.0+cu130 + LLaMA-Factory 0.9.5 + bitsandbytes≥0.49.2 以支持 QLoRA(4bit)）、置 `ENGINE_MODE=real`、`gpus: all`，并把宿主 `${MODELS_DIR}` 只读挂载到容器 `/data/models`。
 - 首次构建会拉 torch（较大），耐心等。前端 / MySQL / 端口与默认一致。
 
 ### 3. 跑一次真实微调
