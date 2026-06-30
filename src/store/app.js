@@ -34,12 +34,18 @@ export const useAppStore = defineStore('app', () => {
     visitedTags.value = visitedTags.value.filter((t) => t.path === targetPath)
   }
 
+  // 全部关闭：清空所有页签（导航到工作台后会自动重新加入「工作台」页签）
+  function closeAllTags() {
+    visitedTags.value = []
+  }
+
   return {
     sidebarCollapsed,
     visitedTags,
     toggleSidebar,
     addTag,
     removeTag,
-    removeOtherTags
+    removeOtherTags,
+    closeAllTags
   }
 })

@@ -11,6 +11,50 @@ from app.models.task import TrainTask, TrainMetric, TrainLog, TaskArtifact, Sche
 TOTAL_STEPS = 20000
 
 
+def _now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _parse(s: str | None):
+    """容忍多种历史格式（'%Y-%m-%d %H:%M:%S' / '%Y-%m-%d %H:%M'）解析时间串。"""
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(s, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _fmt_span(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def task_duration(t: TrainTask) -> str:
+    """已耗时：startedAt→finishedAt（已结束）或 startedAt→now（运行中）。
+
+    未真正启动（draft/pending）或无开始时间的历史任务返回 '-'，不再用创建时写死的占位。
+    """
+    start = _parse(getattr(t, "startedAt", None))
+    if not start:
+        return "-"
+    end = _parse(getattr(t, "finishedAt", None))
+    if not end:
+        if t.status == "running":
+            end = datetime.now()
+        else:
+            return "-"
+    return _fmt_span((end - start).total_seconds())
+
+
 def list_tasks(db: Session, keyword: str = "", status: str = "", page: int = 1, page_size: int = 10):
     stmt = select(TrainTask)
     if keyword:
@@ -19,13 +63,31 @@ def list_tasks(db: Session, keyword: str = "", status: str = "", page: int = 1, 
         stmt = stmt.where(TrainTask.status == status)
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     stmt = stmt.order_by(TrainTask.id.desc()).offset((page - 1) * page_size).limit(page_size)
-    return db.scalars(stmt).all(), total
+    items = db.scalars(stmt).all()
+    # duration 实时计算覆盖（get_db 不提交 + autoflush=False，此瞬时赋值不落库）
+    for t in items:
+        t.duration = task_duration(t)
+    return items, total
 
 
-def create_task(db: Session, payload: dict) -> TrainTask:
-    # real：入队等待真实引擎调度（pending）；sim：创建即 running，由模拟调度器推进
+def create_task(db: Session, payload: dict, auto_start: bool = True) -> TrainTask:
+    # auto_start=False：存为 draft（草稿/未启动），调度器忽略，可后续调超参再手动启动。
+    # auto_start=True：real 入队等待真实引擎调度（pending）；sim 创建即 running，由模拟调度器推进。
     from app.core.config import settings
-    init_status = "pending" if settings.ENGINE_MODE == "real" else "running"
+    if not auto_start:
+        init_status = "draft"
+    else:
+        init_status = "pending" if settings.ENGINE_MODE == "real" else "running"
+    # 创建时间用服务端真实时钟（不信前端写死值）；duration 由 started/finished 实时算
+    payload["createdAt"] = _now()
+    payload.pop("duration", None)
+    if init_status == "running":
+        # sim 模式创建即跑、不经引擎：此处直接落开始时间与占位 GPU，保证「已耗时」可算
+        payload["startedAt"] = _now()
+        payload["gpu"] = "GPU 0"
+    else:
+        # real(pending)/draft：GPU 待引擎 _launch 起子进程时回填真实序号
+        payload["gpu"] = "待分配"
     item = TrainTask(status=init_status, progress=0, loss="-", **payload)
     db.add(item)
     db.commit()
@@ -65,6 +127,8 @@ def requeue_task(db: Session, task_id: int) -> bool:
     t.progress = 0
     t.pid = None
     t.errorMsg = None
+    t.startedAt = None      # 旧的开始/结束时间清空，重跑后由引擎重新落，避免「已耗时」错算
+    t.finishedAt = None
     db.commit()
     return True
 
@@ -175,14 +239,22 @@ def resource_usage(db: Session, t: TrainTask) -> dict:
     }
 
 
-def get_logs(db: Session, task_id: int, level: str = "", keyword: str = "", limit: int = 300):
-    stmt = select(TrainLog).where(TrainLog.task_id == task_id)
+def get_logs(db: Session, task_id: int, level: str = "", keyword: str = "", limit: int | None = 1000):
+    """查询任务日志（按时间正序返回）。
+
+    limit>0：只取「最新 limit 条」（尾部）再正序返回——真实训练日志上千行，
+    取头部会只看到启动/config 段、看不到训练过程与收尾，故默认看尾部。
+    limit=0/None：取全部（用于完整下载）。
+    """
+    base = select(TrainLog).where(TrainLog.task_id == task_id)
     if level:
-        stmt = stmt.where(TrainLog.level == level)
+        base = base.where(TrainLog.level == level)
     if keyword:
-        stmt = stmt.where(TrainLog.msg.like(f"%{keyword}%"))
-    stmt = stmt.order_by(TrainLog.id).limit(limit)
-    return db.scalars(stmt).all()
+        base = base.where(TrainLog.msg.like(f"%{keyword}%"))
+    if limit:
+        rows = db.scalars(base.order_by(TrainLog.id.desc()).limit(limit)).all()
+        return list(reversed(rows))
+    return db.scalars(base.order_by(TrainLog.id)).all()
 
 
 def _ensure_schedule_seed(db: Session):

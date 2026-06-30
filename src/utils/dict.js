@@ -20,6 +20,7 @@ export const BASE_MODELS = [
 ]
 
 export const TASK_STATUS = {
+  draft: { label: '未启动', type: 'info' },
   pending: { label: '排队中', type: 'info' },
   running: { label: '训练中', type: 'primary' },
   paused: { label: '已暂停', type: 'warning' },

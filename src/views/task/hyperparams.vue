@@ -8,17 +8,22 @@
           <template #header>
             <div class="flex-between">
               <span>超参数配置</span>
-              <el-select v-model="template" placeholder="加载默认模板" size="small" style="width: 220px" @change="applyTemplate">
-                <el-option label="审讯笔录实体识别模板" value="ner" />
-                <el-option label="OCR 校对微调模板" value="ocr" />
-                <el-option label="资金流关系抽取模板" value="relation" />
+              <el-select v-model="template" placeholder="加载模板" size="small" style="width: 240px" filterable @change="applyTemplate">
+                <el-option-group label="内置模板">
+                  <el-option label="审讯笔录实体识别模板" value="builtin:ner" />
+                  <el-option label="OCR 校对微调模板" value="builtin:ocr" />
+                  <el-option label="资金流关系抽取模板" value="builtin:relation" />
+                </el-option-group>
+                <el-option-group v-if="savedTemplates.length" label="已存模板">
+                  <el-option v-for="t in savedTemplates" :key="t.id" :label="`${t.name}（${t.scene || '自定义'}）`" :value="`db:${t.id}`" />
+                </el-option-group>
               </el-select>
             </div>
           </template>
 
           <div class="param-row">
             <div class="param-label">学习率 (learning rate)</div>
-            <el-slider v-model="lrExp" :min="-6" :max="-3" :step="0.1" :format-tooltip="(v) => `1e${v.toFixed(1)}`" style="flex: 1" />
+            <el-slider v-model="lrExp" :min="-6" :max="-3" :step="0.1" :format-tooltip="(v) => Math.pow(10, v).toExponential(1)" style="flex: 1" />
             <el-tag class="param-val">{{ lrText }}</el-tag>
           </div>
           <div class="param-row">
@@ -94,10 +99,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { saveHyperTemplate } from '@/api/modules/config'
+import { saveHyperTemplate, getHyperTemplates } from '@/api/modules/config'
 import { getTaskList, applyHyperparams } from '@/api/modules/task'
 
 const template = ref('')
@@ -114,12 +119,38 @@ const presets = {
   ocr: { lrExp: -4, batchSize: 32, epochs: 5, optimizer: 'Adam' },
   relation: { lrExp: -4.5, batchSize: 8, epochs: 10, optimizer: 'AdamW' }
 }
+
+// 已存模板（数据库），供下拉「已存模板」分组加载
+const savedTemplates = ref([])
+async function loadSavedTemplates() {
+  const res = await getHyperTemplates({ pageSize: 100 })
+  savedTemplates.value = res.list || []
+}
+onActivated(loadSavedTemplates)
+
+// 把学习率字符串（如 "2e-5"）反算回滑块指数，并夹到滑块范围 [-6, -3] / 步长 0.1
+function lrToExp(lr) {
+  const n = parseFloat(lr)
+  if (!(n > 0)) return lrExp.value
+  const e = Math.round(Math.log10(n) * 10) / 10
+  return Math.min(-3, Math.max(-6, e))
+}
+
 function applyTemplate(v) {
-  const p = presets[v]
-  if (!p) return
-  lrExp.value = p.lrExp
-  Object.assign(form, { batchSize: p.batchSize, epochs: p.epochs, optimizer: p.optimizer })
-  ElMessage.success('已加载模板')
+  if (typeof v !== 'string') return
+  if (v.startsWith('builtin:')) {
+    const p = presets[v.slice(8)]
+    if (!p) return
+    lrExp.value = p.lrExp
+    Object.assign(form, { batchSize: p.batchSize, epochs: p.epochs, optimizer: p.optimizer })
+    ElMessage.success('已加载内置模板')
+  } else if (v.startsWith('db:')) {
+    const t = savedTemplates.value.find((x) => x.id === Number(v.slice(3)))
+    if (!t) return
+    lrExp.value = lrToExp(t.lr)
+    Object.assign(form, { batchSize: t.batchSize || form.batchSize, epochs: t.epochs || form.epochs, optimizer: t.optimizer || form.optimizer })
+    ElMessage.success(`已加载模板「${t.name}」`)
+  }
 }
 const applyDialog = ref(false)
 const applying = ref(false)
@@ -162,6 +193,7 @@ async function saveAsTemplate() {
       optimizer: form.optimizer
     })
     ElMessage.success('已保存为超参模板，可在「配置管理 → 超参模板」中查看')
+    loadSavedTemplates()
   } catch (e) {
     /* 用户取消 prompt 时静默 */
   }

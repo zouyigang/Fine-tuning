@@ -2,8 +2,10 @@
   <div>
     <PageHeader title="超参模板管理" description="保存常用超参数配置为模板，按业务场景分类（如审讯笔录实体识别、资金流关系抽取），支持模板导入导出">
       <template #extra>
-        <el-button :icon="Upload">导入模板</el-button>
+        <el-button :icon="Download" @click="exportAll" :disabled="!list.length">导出全部</el-button>
+        <el-button :icon="Upload" @click="triggerImport">导入模板</el-button>
         <el-button type="primary" :icon="Plus" @click="openDialog()">新建模板</el-button>
+        <input ref="fileInput" type="file" accept=".json,application/json" style="display: none" @change="onImportFile" />
       </template>
     </PageHeader>
 
@@ -24,7 +26,7 @@
             <span class="text-muted">已使用 {{ t.useCount }} 次</span>
             <div>
               <el-button link type="primary" size="small" @click="openDialog(t)">编辑</el-button>
-              <el-button link type="primary" size="small">导出</el-button>
+              <el-button link type="primary" size="small" @click="exportOne(t)">导出</el-button>
               <el-button link type="danger" size="small" @click="remove(t)">删除</el-button>
             </div>
           </div>
@@ -50,7 +52,7 @@
 
 <script setup>
 import { ref, reactive, onActivated } from 'vue'
-import { Plus, Upload } from '@element-plus/icons-vue'
+import { Plus, Upload, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { getHyperTemplates, saveHyperTemplate, deleteHyperTemplate } from '@/api/modules/config'
@@ -83,6 +85,60 @@ async function remove(t) {
   ElMessage.success('已删除')
   load()
 }
+
+// 模板可移植字段（剔除 id/useCount 等运行态字段）
+function pick(t) {
+  return { name: t.name, scene: t.scene, lr: t.lr, batchSize: t.batchSize, epochs: t.epochs, optimizer: t.optimizer }
+}
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+function exportOne(t) {
+  downloadJson(pick(t), `超参模板_${t.name || t.id}.json`)
+}
+function exportAll() {
+  downloadJson(list.value.map(pick), `超参模板_全部_${new Date().toISOString().slice(0, 10)}.json`)
+}
+
+// ---- 导入 ----
+const fileInput = ref()
+function triggerImport() {
+  fileInput.value?.click()
+}
+async function onImportFile(e) {
+  const file = e.target.files?.[0]
+  e.target.value = '' // 允许重复选同一文件
+  if (!file) return
+  let parsed
+  try {
+    parsed = JSON.parse(await file.text())
+  } catch {
+    ElMessage.error('文件不是合法的 JSON')
+    return
+  }
+  const items = (Array.isArray(parsed) ? parsed : [parsed]).filter((x) => x && x.name)
+  if (!items.length) {
+    ElMessage.error('未解析到有效模板（需含 name 字段）')
+    return
+  }
+  let ok = 0
+  for (const it of items) {
+    try {
+      // 不带 id → 一律新建，避免覆盖现有模板
+      await saveHyperTemplate(pick(it))
+      ok++
+    } catch { /* 单条失败跳过，继续导入其余 */ }
+  }
+  ElMessage.success(`导入完成：成功 ${ok} / ${items.length} 条`)
+  load()
+}
+
 onActivated(load)
 </script>
 

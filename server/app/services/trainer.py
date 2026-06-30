@@ -72,6 +72,8 @@ def _advance(db, t: TrainTask):
         if step >= TOTAL_STEPS:
             t.status = "success"
             t.progress = 100
+            if not t.finishedAt:
+                t.finishedAt = _now()   # 供「已耗时」计算（startedAt→finishedAt）
             db.add(TrainLog(task_id=t.id, time=_now(), level="INFO", msg="training finished, best checkpoint saved"))
 
 

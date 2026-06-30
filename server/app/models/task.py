@@ -32,6 +32,7 @@ class TrainTask(Base):
     pid = Column(Integer)                              # 训练子进程 PID（用于停止）
     errorMsg = Column("error_msg", String(512))       # 失败原因
     modelVersionId = Column("model_version_id", Integer)  # 训练成功后产出的 model_version.id
+    startedAt = Column("started_at", String(32))           # 训练真实开始时间（子进程起来时）
     finishedAt = Column("finished_at", String(32))
 
 

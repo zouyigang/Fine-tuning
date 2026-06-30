@@ -49,9 +49,8 @@
         <!-- step 2 -->
         <el-form v-show="step === 2" label-width="140px" style="max-width: 600px; margin: 0 auto">
           <el-form-item label="超参模板">
-            <el-select v-model="form.template" placeholder="可选择模板快速填充" style="width: 100%" clearable>
-              <el-option label="审讯笔录实体识别模板" value="t1" />
-              <el-option label="OCR 校对微调模板" value="t2" />
+            <el-select v-model="form.template" placeholder="可选择模板快速填充" style="width: 100%" clearable filterable @change="applyHyperTemplate">
+              <el-option v-for="t in hyperTemplates" :key="t.id" :label="`${t.name}（${t.scene || '自定义'}）`" :value="t.id" />
             </el-select>
           </el-form-item>
           <el-form-item label="学习率"><el-input-number v-model="form.lr" :step="0.00001" :precision="5" controls-position="right" /></el-form-item>
@@ -76,7 +75,10 @@
       <div class="step-footer">
         <el-button v-if="step > 0" @click="step--">上一步</el-button>
         <el-button v-if="step < 3" type="primary" @click="next">下一步</el-button>
-        <el-button v-else type="success" :loading="submitting" @click="submit">提交并启动任务</el-button>
+        <template v-else>
+          <el-button :loading="submitting" @click="submit(false)">仅保存（暂不启动）</el-button>
+          <el-button type="success" :loading="submitting" @click="submit(true)">提交并启动任务</el-button>
+        </template>
       </div>
     </el-card>
   </div>
@@ -90,6 +92,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { MODEL_TYPES, BASE_MODELS, dictLabel } from '@/utils/dict'
 import { createTask } from '@/api/modules/task'
 import { getDatasetList, getDatasetTypes } from '@/api/modules/dataset'
+import { getHyperTemplates } from '@/api/modules/config'
 
 const router = useRouter()
 const step = ref(0)
@@ -105,11 +108,28 @@ const MODEL_TO_DS_TYPE = { ocr: 'ocr', ner: 'entity', relation: 'entity', event:
 // 训练数据集只列「已发布」（已脱敏并转成训练样本，闭环要求）
 const datasets = ref([])
 const dsTypes = ref([]) // [{ value, label }] 数据集类型字典，用于把模型类型映射到 dataset.type 标签
+// 超参模板（数据库），供「超参模板」下拉快速填充
+const hyperTemplates = ref([])
 onActivated(async () => {
   const res = await getDatasetList({ stage: '已发布', pageSize: 100 })
   datasets.value = res.list || []
   dsTypes.value = await getDatasetTypes()
+  const tpl = await getHyperTemplates({ pageSize: 100 })
+  hyperTemplates.value = tpl.list || []
 })
+
+// 选中模板：用其 lr/批次/轮数/优化器填充表单（lr 为字符串如 "2e-5"，转数值）
+function applyHyperTemplate(id) {
+  if (!id) return
+  const t = hyperTemplates.value.find((x) => x.id === id)
+  if (!t) return
+  const lr = parseFloat(t.lr)
+  if (lr > 0) form.lr = lr
+  if (t.batchSize) form.batchSize = t.batchSize
+  if (t.epochs) form.epochs = t.epochs
+  if (t.optimizer) form.optimizer = t.optimizer
+  ElMessage.success(`已套用模板「${t.name}」`)
+}
 
 // 当前业务模型类型对应的数据集类型标签（dataset.type 存的是 label）
 const expectedDsLabel = computed(() => {
@@ -142,27 +162,30 @@ function next() {
   if (step.value === 1 && (!form.baseModel || !form.dataset)) return ElMessage.warning('请选择基础模型与数据集')
   step.value++
 }
-async function submit() {
+async function submit(autoStart = true) {
   submitting.value = true
-  await createTask({
-    name: form.name,
-    modelType: labelOf(MODEL_TYPES, form.modelType),
-    baseModel: labelOf(BASE_MODELS, form.baseModel),
-    dataset: form.dataset,
-    priority: '中',
-    gpu: '2 × A100',
-    epoch: `0/${form.epochs}`,
-    creator: '张三',
-    createdAt: '2026-06-09 10:30',
-    duration: '0m',
-    // 真实引擎：透传微调方式与超参（替代过去被丢弃的配置）
-    method: form.method,
-    hyperparams: { lr: form.lr, batchSize: form.batchSize, epochs: form.epochs, optimizer: form.optimizer }
-  })
-  submitting.value = false
-  ElMessage.success('任务已创建并进入训练队列')
+  try {
+    await createTask({
+      name: form.name,
+      modelType: labelOf(MODEL_TYPES, form.modelType),
+      baseModel: labelOf(BASE_MODELS, form.baseModel),
+      dataset: form.dataset,
+      priority: '中',
+      epoch: `0/${form.epochs}`,
+      creator: '张三',
+      // gpu / createdAt / duration 由后端真实落库（创建时间用服务端时钟、GPU 待引擎回填、耗时实时算）
+      // 真实引擎：透传微调方式与超参（替代过去被丢弃的配置）
+      method: form.method,
+      hyperparams: { lr: form.lr, batchSize: form.batchSize, epochs: form.epochs, optimizer: form.optimizer },
+      // false → 存为「未启动」草稿，可在「任务启停与重试」里调超参后再启动
+      autoStart
+    })
+  } finally {
+    submitting.value = false
+  }
+  ElMessage.success(autoStart ? '任务已创建并进入训练队列' : '任务已保存为「未启动」，可稍后调参后再启动')
   resetWizard()   // 复位向导，避免 keep-alive 下次进入仍停在「确认提交」并带旧数据
-  router.push('/task/monitor')
+  router.push(autoStart ? '/task/monitor' : '/task/control')
 }
 
 // 复位到第 1 步并清空表单（保留默认超参）

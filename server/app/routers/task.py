@@ -71,8 +71,8 @@ def download_task_logs(
     keyword: str = "",
     db: Session = Depends(get_db),
 ):
-    """导出指定任务的训练日志为 .log 纯文本文件（可按级别/关键字过滤）。"""
-    logs = crud.get_logs(db, task_id, level, keyword)
+    """导出指定任务的训练日志为 .log 纯文本文件（可按级别/关键字过滤；下载取完整日志）。"""
+    logs = crud.get_logs(db, task_id, level, keyword, limit=0)
     lines = [f"{l.time} [{l.level}] {l.msg}" for l in logs]
     content = ("\n".join(lines) + "\n") if lines else "暂无日志\n"
     return Response(
@@ -120,7 +120,9 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     if mismatch:
         return err(f"业务模型「{payload.modelType}」需要「{exp_label}」类型的数据集，"
                    f"但所选「{ds.name}」是「{act_label}」类型，请重新选择匹配的数据集", code=4001)
-    item = crud.create_task(db, payload.model_dump(exclude_none=True))
+    data = payload.model_dump(exclude_none=True)
+    auto_start = data.pop("autoStart", True)
+    item = crud.create_task(db, data, auto_start=auto_start)
     return ok(TaskOut.model_validate(item))
 
 

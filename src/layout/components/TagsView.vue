@@ -21,11 +21,21 @@
         </router-link>
       </div>
     </el-scrollbar>
+    <el-dropdown class="tags-actions" trigger="click" @command="onCommand">
+      <el-icon class="actions-trigger"><ArrowDown /></el-icon>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="other">关闭其他</el-dropdown-item>
+          <el-dropdown-item command="all">全部关闭</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
   </div>
 </template>
 
 <script setup>
 import { watch } from 'vue'
+import { ArrowDown } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/store/app'
 
@@ -33,6 +43,7 @@ const appStore = useAppStore()
 const route = useRoute()
 const router = useRouter()
 
+const DASHBOARD = '/dashboard/index'
 const isActive = (tag) => tag.path === route.path
 
 watch(
@@ -45,7 +56,16 @@ function closeTag(tag) {
   const remaining = appStore.removeTag(tag.path)
   if (isActive(tag)) {
     const last = remaining[remaining.length - 1]
-    router.push(last ? last.path : '/dashboard/index')
+    router.push(last ? last.path : DASHBOARD)
+  }
+}
+
+function onCommand(cmd) {
+  if (cmd === 'other') {
+    appStore.removeOtherTags(route.path)
+  } else if (cmd === 'all') {
+    appStore.closeAllTags()
+    router.push(DASHBOARD)   // 回工作台（导航后自动重建「工作台」页签）
   }
 }
 </script>
@@ -62,7 +82,30 @@ function closeTag(tag) {
 }
 
 .tags-scroll {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.tags-actions {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.actions-trigger {
+  height: 28px;
+  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #5e6470;
+  background: #fafafa;
+  border: 1px solid #e4e7ed;
+  border-radius: 3px;
+  cursor: pointer;
+  outline: none;
+  &:hover {
+    color: $primary-color;
+    border-color: $primary-color;
+  }
 }
 
 .tags-wrap {

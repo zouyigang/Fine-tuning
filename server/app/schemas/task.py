@@ -23,6 +23,8 @@ class TaskOut(BaseModel):
     hyperparams: dict | None = None
     errorMsg: str | None = None
     modelVersionId: int | None = None
+    startedAt: str | None = None
+    finishedAt: str | None = None
 
 
 class TaskCreate(BaseModel):
@@ -39,6 +41,8 @@ class TaskCreate(BaseModel):
     # 真实引擎：微调方式 + 超参（{lr,batchSize,epochs,optimizer,maxLen,...}）
     method: str | None = "lora"
     hyperparams: dict | None = None
+    # 是否创建后立即入队启动；false 则存为 draft（草稿/未启动），可后续调参再启动
+    autoStart: bool | None = True
 
 
 class StatusIn(BaseModel):

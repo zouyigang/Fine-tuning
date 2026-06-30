@@ -6,14 +6,13 @@
       <div class="flex-between mb-16">
         <el-form :inline="true">
           <el-form-item label="任务">
-            <el-select v-model="taskId" style="width: 220px" @change="load">
-              <el-option label="实体识别微调-20260608" :value="1" />
-              <el-option label="OCR 识别微调-20260607" :value="2" />
+            <el-select v-model="taskId" style="width: 260px" filterable placeholder="选择任务" @change="onTaskChange">
+              <el-option v-for="t in tasks" :key="t.id" :label="`#${t.id} ${t.name}`" :value="t.id" />
             </el-select>
           </el-form-item>
           <el-form-item label="级别">
             <el-select v-model="query.level" placeholder="全部" clearable style="width: 120px" @change="load">
-              <el-option v-for="l in ['INFO', 'WARN', 'ERROR', 'DEBUG']" :key="l" :label="l" :value="l" />
+              <el-option v-for="l in ['DEBUG', 'INFO', 'WARN', 'ERROR']" :key="l" :label="l" :value="l" />
             </el-select>
           </el-form-item>
           <el-form-item>
@@ -39,23 +38,47 @@
 </template>
 
 <script setup>
-import { ref, reactive, onActivated, nextTick } from 'vue'
+import { ref, reactive, watch, onActivated, onDeactivated, onUnmounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { Search, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getTaskLogs, downloadTaskLogs } from '@/api/modules/task'
+import { getTaskLogs, downloadTaskLogs, getTaskList } from '@/api/modules/task'
 
-const taskId = ref(1)
+const route = useRoute()
+const taskId = ref(null)
+const tasks = ref([])
 const logs = ref([])
 const query = reactive({ level: '', keyword: '' })
 const autoScroll = ref(true)
 const logBox = ref()
 
+// 运行中/排队中的任务才需要实时轮询日志（已完成的日志不再变化）；
+// 轮询与「自动滚动」联动：开=实时跟随(拉新+滚底)，关=冻结当前视图便于阅读。
+let timer = null
+const isLive = () => ['running', 'pending'].includes(tasks.value.find((t) => t.id === taskId.value)?.status)
+function startPolling() {
+  stopPolling()
+  if (isLive() && autoScroll.value) timer = setInterval(load, 3000)
+}
+function stopPolling() {
+  if (timer) { clearInterval(timer); timer = null }
+}
+watch(autoScroll, startPolling)   // 切换「自动滚动」即开始/停止实时跟随
+
 async function load() {
-  logs.value = await getTaskLogs(query)
+  // 传 taskId 精确查该任务日志；为空时后端回退当前运行任务
+  logs.value = await getTaskLogs({ ...query, taskId: taskId.value || undefined })
   if (autoScroll.value) nextTick(() => logBox.value && (logBox.value.scrollTop = logBox.value.scrollHeight))
 }
+
+// 切换任务：重载日志并按新任务状态决定是否继续轮询
+async function onTaskChange() {
+  await load()
+  startPolling()
+}
 async function download() {
+  if (!taskId.value) return ElMessage.warning('请先选择任务')
   try {
     const name = await downloadTaskLogs(taskId.value, { level: query.level, keyword: query.keyword })
     ElMessage.success(`日志已下载（${name}）`)
@@ -63,7 +86,21 @@ async function download() {
     /* 错误提示已在 downloadFile 内统一处理 */
   }
 }
-onActivated(load)
+onActivated(async () => {
+  const res = await getTaskList({ page: 1, pageSize: 100 })
+  tasks.value = res.list || []
+  // 优先用路由带入的 taskId（来自「任务启停与重试」的日志按钮）；否则默认第一个任务
+  const routed = Number(route.query.taskId)
+  if (routed && tasks.value.some((t) => t.id === routed)) {
+    taskId.value = routed
+  } else if (!taskId.value && tasks.value.length) {
+    taskId.value = tasks.value[0].id
+  }
+  await load()
+  startPolling()           // 运行中任务自动每 3s 拉新日志，无需手动刷新
+})
+onDeactivated(stopPolling)  // 切走标签页即停止轮询
+onUnmounted(stopPolling)
 </script>
 
 <style lang="scss" scoped>

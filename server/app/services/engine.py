@@ -246,6 +246,8 @@ class TrainingManager:
             t = db.get(TrainTask, task_id)
             if t:
                 t.pid = proc.pid
+                t.startedAt = _now()                 # 真实开始时间，供「已耗时」计算
+                t.gpu = f"GPU {device}"               # 真实占用的 GPU 序号（替代创建时的占位值）
                 db.commit()
         finally:
             db.close()
